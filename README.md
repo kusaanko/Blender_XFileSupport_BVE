@@ -2,11 +2,11 @@
  Bve用に設計されたBlender用のXファイル入出力プラグイン
 
 # インストール方法
-![preference](for_readme/preference.jpg)  
+<img src="for_readme/preference.jpg" style="max-width: 500px;"></img>  
 編集>プリファレンスをクリックして設定画面を出します  
-![install](for_readme/install.jpg)  
+<img src="for_readme/install.jpg" style="max-width: 500px;"></img>  
 アドオン->インストールをクリックします  
-![install_addon](for_readme/install_addon.jpg)  
+<img src="for_readme/install_addon.jpg" style="max-width: 500px;"></img>  
 ダウンロードしたXFileSupport.pyを選択してアドオンをインストールをクリックします。
-![check](for_readme/check.jpg)  
+<img src="for_readme/check.jpg" style="max-width: 500px;"></img>  
 「DirectX」と検索してこのプラグインが有効になっていることを確認してください。
