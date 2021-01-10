@@ -1,0 +1,2 @@
+# Blender_XFileSupport_BVE
+ Bve用に設計されたBlender用のXファイル入出力プラグイン
