@@ -17,3 +17,7 @@ Wikiページを御覧ください。[Wiki](https://github.com/kusaanko/Blender_
 ダウンロードしたXFileSupport.pyを選択してアドオンをインストールをクリックします。
 <img src="for_readme/check.jpg" width="500px;"></img>  
 「DirectX」と検索してこのプラグインが有効になっていることを確認してください。
+
+# ToDo
+- Xファイルにメッシュ、素材名が記述されていても正常に読み込めるようにする
+- 更新の確認機能
