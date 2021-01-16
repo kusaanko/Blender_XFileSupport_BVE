@@ -9,6 +9,10 @@ import re
 import bpy
 from bpy.props import StringProperty, BoolProperty, FloatProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
+import urllib.request
+import urllib.parse
+import json
+import webbrowser
 
 bl_info = {
     "name": "Import/Export DirectX X File (.x) for Bve",
@@ -23,13 +27,17 @@ bl_info = {
     "category": "Import-Export"
 }
 
-__version__ = "0.1"
+__version__ = "1.0.0"
 
 # locale
 #    (target_context, key): translated_str
 translations_dict = {
     "ja_JP": {
-        ("*", "Remove All Objects and Materials"): "全てのオブジェクトとマテリアルを削除する"
+        ("*", "Remove All Objects and Materials"): "全てのオブジェクトとマテリアルを削除する",
+        ("*", "The update of XFileSupport is available!"): "XFileSupportの更新が利用可能です！",
+        ("*", "Your version:"): "現在のバージョン:",
+        ("*", "New version:"): "新しいバージョン:",
+        ("*", "Please download from this link."): "このリンクからダウンロードしてください。"
     }
 }
 
@@ -579,6 +587,35 @@ def register():
     bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
 
     bpy.app.translations.register(__name__, translations_dict)
+
+    try:
+        req = urllib.request.Request(
+            'https://raw.githubusercontent.com/kusaanko/Blender_XFileSupport_BVE/main/versions.json'
+        )
+        with urllib.request.urlopen(req) as response:
+            body = response.read()
+            json_data = json.loads(body)
+            for versions in json_data:
+                if (versions['blender_major'], versions['blender_minor'], versions['blender_subversion'])\
+                        <= bpy.app.version:
+                    if (versions['version_major'], versions['version_minor'], versions['version_subversion']) \
+                            > bl_info['version']:
+                        html = """
+<html>
+<head>
+  <title>XFileSupport Update</title>
+  <meta charset="UTF-8" />
+</head>
+<body>
+  <h1>""" + bpy.app.translations.pgettext("The update of XFileSupport is available!") + """</h1>
+  <p>""" + bpy.app.translations.pgettext("Your version:") + " " + str(bl_info['version'][0]) + "." + str(bl_info['version'][1]) + "." + str(bl_info['version'][2]) + """</p>
+  <p>""" + bpy.app.translations.pgettext("New version:") + " " + str(versions['version_major']) + "." + str(versions['version_minor']) + "." + str(versions['version_subversion']) + """</p>
+  <p><a href=""" + versions['download_link'] + ">" + bpy.app.translations.pgettext("Please download from this link.") + """</a></p>
+</body>
+</html>"""
+                        webbrowser.open_new_tab("https://kusaanko.github.io/custom_page.html?"+urllib.parse.quote(html))
+    except OSError:
+        pass
 
 
 def unregister():
