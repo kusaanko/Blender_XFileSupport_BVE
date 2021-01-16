@@ -1,9 +1,9 @@
 [
-    {
-	    "version": "1.0.0",
-		"blender_major": 2,
-		"blender_minor": 83,
-		"blender_subversion": 0,
-		"download_link": "https://github.com/kusaanko/Blender_XFileSupport_BVE/releases/latest"
-	}
+  {
+    "version": "1.0.0",
+    "blender_major": 2,
+    "blender_minor": 83,
+    "blender_subversion": 0,
+    "download_link": "https://github.com/kusaanko/Blender_XFileSupport_BVE/releases/latest"
+  }
 ]
