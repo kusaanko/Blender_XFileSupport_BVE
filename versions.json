@@ -1,6 +1,8 @@
 [
   {
-    "version": "1.0.0",
+    "version_major": 1,
+    "version_minor": 0,
+    "version_subversion": 0,
     "blender_major": 2,
     "blender_minor": 83,
     "blender_subversion": 0,
