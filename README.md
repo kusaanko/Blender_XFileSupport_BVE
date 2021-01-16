@@ -20,5 +20,3 @@ Wikiページを御覧ください。[Wiki](https://github.com/kusaanko/Blender_
 
 # ToDo
 - CSV入力のサポート
-- Xファイルにメッシュ、素材名が記述されていても正常に読み込めるようにする
-- 更新の確認機能
