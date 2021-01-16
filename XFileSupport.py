@@ -614,6 +614,7 @@ def register():
 </body>
 </html>"""
                         webbrowser.open_new_tab("https://kusaanko.github.io/custom_page.html?"+urllib.parse.quote(html))
+                        break
     except OSError:
         pass
 
