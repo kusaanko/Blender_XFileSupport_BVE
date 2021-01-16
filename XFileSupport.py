@@ -644,7 +644,10 @@ def to_XElement(x_model_file_string, start_line_num):
         line = x_model_file_string[line_num]
         if "{" in line:
             if element_type == "":
-                element_type = re.sub(' *', "", line[0:line.index("{")])
+                element_type = re.sub('\t', "", line[0:line.index("{")])
+                element_type = re.sub('^ *', "", element_type)
+                if element_type.find(" ") != -1:
+                    element_type = element_type[0:element_type.find(" ")]
             else:
                 x_element = to_XElement(x_model_file_string, line_num)
                 children.append(x_element)
