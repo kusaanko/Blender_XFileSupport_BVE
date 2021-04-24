@@ -95,8 +95,8 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
             if i == 3:
                 i = 0
                 # DirectX X Y Z
-                # Blender -X Z Y
-                vector = (-vertex[0], vertex[2], vertex[1])
+                # Blender -X -Z Y
+                vector = (-vertex[0], -vertex[2], vertex[1])
                 # 重複した座標は1つにまとめる
                 # リダイレクト先を登録しておく
                 if vector in self.mesh_vertexes:
@@ -154,6 +154,7 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
             i += 1
             if i == 2:
                 i = 0
+                vertex[1] = -vertex[1] + 1
                 self.mesh_tex_coord.append(vertex)
                 vertex = [0.0, 0.0]
                 if len(self.mesh_tex_coord) == size:
@@ -335,12 +336,11 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
                     face = self.mesh_faces[i]
                     # faces_data.append(face)
                     for k in face:
-                        l = self.mesh_vertexes_redirect[k]
-                        if self.mesh_vertexes[l] in vertexes_data:
-                            mesh_indexes[k] = vertexes_data.index(self.mesh_vertexes[l])
+                        if self.mesh_vertexes[k] in vertexes_data:
+                            mesh_indexes[k] = vertexes_data.index(self.mesh_vertexes[k])
                         else:
                             mesh_indexes[k] = len(vertexes_data)
-                            vertexes_data.append(self.mesh_vertexes[l])
+                            vertexes_data.append(self.mesh_vertexes[k])
                     count = 0
                     face_data = [0] * len(face)
                     for k in face:
