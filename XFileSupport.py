@@ -738,7 +738,7 @@ def to_XElement(x_model_file_string, start_line_num):
 def vertex_to_str(vertex):
     # Blender X Z Y
     # DirectX -X Y Z
-    return str(round(-vertex[0], 6)) + ";" + str(round(vertex[2], 6)) + ";" + str(round(vertex[1], 6))
+    return str(round(-vertex[0], 6)) + ";" + str(round(vertex[2], 6)) + ";" + str(round(-vertex[1], 6))
 
 
 def gen_fake_material():
