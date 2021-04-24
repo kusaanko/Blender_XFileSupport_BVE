@@ -17,7 +17,7 @@ import webbrowser
 bl_info = {
     "name": "Import/Export DirectX X File (.x) for Bve",
     "author": "kusaanko",
-    "version": (1, 1, 0),
+    "version": (1, 2, 0),
     "blender": (2, 80, 3),
     "location": "File > Import / Export > DirectX XFile(.x)",
     "description": "Import/Export files in the DirectX X file (.x)",
@@ -67,6 +67,143 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
         default=True,
     )
 
+    def __init__(self):
+        self.mesh_vertexes = []
+        self.mesh_faces = []
+        self.mesh_vertexes_redirect = {}
+        self.vertexes = []
+        self.mesh_faces_exact = []
+        self.mesh_tex_coord = []
+        self.material_face_indexes = []
+        self.material_count = 0
+        self.materials = []
+
+    def parse_mesh(self, element):
+        data = element.data
+        size = int(data[0:data.find(";")].replace(" ", ""))
+        num_matcher = NumMatcher(True, True)
+        data = data[data.find(";") + 1:]
+        num_matcher.set_target(data)
+        vertex = [0.0, 0.0, 0.0]
+        i = 0
+        self.mesh_vertexes = []
+        self.mesh_vertexes_redirect = {}
+        vertex_index = 0
+        while num_matcher.find():
+            vertex[i] = float(num_matcher.group())
+            i += 1
+            if i == 3:
+                i = 0
+                # DirectX X Y Z
+                # Blender -X Z Y
+                vector = (-vertex[0], vertex[2], vertex[1])
+                # 重複した座標は1つにまとめる
+                # リダイレクト先を登録しておく
+                if vector in self.mesh_vertexes:
+                    self.mesh_vertexes_redirect[vertex_index] = self.mesh_vertexes.index(vector)
+                else:
+                    self.mesh_vertexes_redirect[vertex_index] = len(self.mesh_vertexes)
+                    self.mesh_vertexes.append(vector)
+                vertex_index += 1
+                if vertex_index == size:
+                    break
+        data = data[num_matcher.get_end() + 1:]
+        indexes_size = 0
+        size = 0
+        positive_num_matcher = NumMatcher(False, True)
+        positive_num_matcher.set_target(data)
+        indexes = []
+        i = -2
+        self.mesh_faces = []
+        self.vertexes = []
+        self.mesh_faces_exact = []
+        while positive_num_matcher.find():
+            if i == -2:
+                indexes_size = int(positive_num_matcher.group())
+            elif i == -1:
+                size = int(positive_num_matcher.group())
+                indexes = [0] * size
+            else:
+                indexes[i] = int(positive_num_matcher.group())
+            i += 1
+            if i == size:
+                i = -1
+                # Blenderに記録する際に使用する頂点のインデックス
+                vertexes = []
+                for l in range(len(indexes)):
+                    if indexes[l] in self.mesh_vertexes_redirect:
+                        vertexes.append(self.mesh_vertexes_redirect[indexes[l]])
+                    else:
+                        vertexes.append(indexes[l])
+                self.mesh_faces.append(vertexes)
+                # Xファイルに記述された実際の使用する頂点のインデックス(UV登録時に使用)
+                self.mesh_faces_exact.append(indexes)
+                if len(self.mesh_faces) == indexes_size:
+                    break
+
+    def parse_texture_coords(self, element):
+        data = element.data
+        num_matcher = NumMatcher(True, True)
+        num_matcher.set_target(data)
+        num_matcher.find()
+        size = int(num_matcher.group())
+        vertex = [0.0, 0.0]
+        i = 0
+        while num_matcher.find():
+            vertex[i] = float(num_matcher.group())
+            i += 1
+            if i == 2:
+                i = 0
+                self.mesh_tex_coord.append(vertex)
+                vertex = [0.0, 0.0]
+                if len(self.mesh_tex_coord) == size:
+                    break
+
+    def parse_mesh_material_list(self, element):
+        data = element.data.replace(" ", "")
+        num_matcher = NumMatcher(False, True)
+        num_matcher.set_target(data)
+        num_matcher.find()
+        self.material_count = int(num_matcher.group())
+        num_matcher.find()
+        size = int(num_matcher.group())
+        while num_matcher.find():
+            self.material_face_indexes.append(int(num_matcher.group()))
+
+    def parse_material(self, element):
+        color = element.data[0:element.data.find(";;")].replace(" ", "").split(";")
+        d = element.data[element.data.find(";;") + 2:]
+        power = float(d[0:d.find(";")])
+        d = d[d.find(";") + 1:]
+        specular_color = d[0:d.find(";;")].split(";")
+        d = d[d.find(";;") + 2:]
+        emission_color = d[0:d.find(";;")].split(";")
+        face_color = [1.0, 1.0, 1.0, 1.0]
+        for i in range(len(color)):
+            face_color[i] = float(color[i])
+        material = XMaterial()
+        material.face_color = face_color
+        material.power = power
+        material.specular_color = (
+            float(specular_color[0]),
+            float(specular_color[1]),
+            float(specular_color[2])
+        )
+        material.emission_color = (
+            float(emission_color[0]),
+            float(emission_color[1]),
+            float(emission_color[2]),
+            1.0
+        )
+        for tex in element.children:
+            if tex.element_type == "TextureFilename":
+                path = "/".join(os.path.abspath(self.filepath).split(os.path.sep)[0:-1])
+                name = tex.data[tex.data.find("\"") + 1:tex.data.rfind("\"")]
+                path = path + "/" + name
+                if os.path.exists(path):
+                    material.texture_path = path
+        self.materials.append(material)
+
     def execute(self, context):
         for obj in bpy.context.scene.objects:
             obj.select_set(False)
@@ -95,117 +232,38 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
                 x_element = to_XElement(x_model_file_string, line)
                 x_elements.append(x_element)
 
-            mesh_vertexes = []
-            mesh_vertexes_redirect = {}
-            mesh_faces = []
-            mesh_faces_exact = []
-            mesh_tex_coord = []
-            material_face_indexes = []
-            materials = []
-            material_count = 0
             vector_index = 0
 
             # XElementからデータを分析
             for element in x_elements:
                 if element.element_type == "Mesh":
-                    data = element.data.replace(" ", "")
-                    # 頂点データのパース X座標;Y座標;Z座標;
-                    vertex_string = data[data.index(";") + 1:data.index(";;")].split(",")
-                    for vertex_str in vertex_string:
-                        vertex = vertex_str.split(";")
-                        # DirectX X Y Z
-                        # Blender -X Z Y
-                        vector = (-float(vertex[0]), float(vertex[2]), float(vertex[1]))
-                        # 重複した座標は1つにまとめる
-                        # リダイレクト先を登録しておく
-                        if vector in mesh_vertexes:
-                            mesh_vertexes_redirect[vector_index] = mesh_vertexes.index(vector)
-                        else:
-                            mesh_vertexes_redirect[vector_index] = len(mesh_vertexes)
-                            mesh_vertexes.append(vector)
-                        vector_index += 1
-                    # 面データのパース 頂点数;頂点のインデックス,頂点のインデックス,...;
-                    data = data[data.index(";;") + 2:]
-                    face_string = data[data.index(";") + 1:data.index(";;")].split(";,")
-                    for face_str in face_string:
-                        # 頂点数; を削除
-                        face_str = re.sub("[0-9]*;", "", face_str)
-                        face = face_str.split(",")
-                        # Blenderに記録する際に使用する頂点のインデックス
-                        vertexes = []
-                        # Xファイルに記述された実際の使用する頂点のインデックス(UV登録時に使用)
-                        vertexes_exact = []
-                        for i in range(len(face)):
-                            if int(face[i]) in mesh_vertexes_redirect:
-                                vertexes.append(mesh_vertexes_redirect[int(face[i])])
-                            else:
-                                vertexes.append(int(face[i]))
-                            vertexes_exact.append(int(face[i]))
-                        mesh_faces.append(vertexes)
-                        mesh_faces_exact.append(vertexes_exact)
+                    self.parse_mesh(element)
 
                     for ele in element.children:
                         # テクスチャの座標(UV)
                         if ele.element_type == "MeshTextureCoords":
-                            data = ele.data.replace("", "")
-                            tex_coord_string = data[data.index(";") + 1:data.index(";;")].split(",")
-                            for tex_coord_str in tex_coord_string:
-                                tex_coord = tex_coord_str.split(";")
-                                mesh_tex_coord.append((float(tex_coord[0]), -float(tex_coord[1]) + 1))
+                            self.parse_texture_coords(ele)
                         # マテリアルのリスト マテリアル数;\n面の数;\nその面が使用するマテリアルのインデックス,...
                         if ele.element_type == "MeshMaterialList":
-                            data = ele.data.replace(" ", "")
-                            material_count = int(data[0:data.index(";")])
-                            data = data[data.index(";") + 1:]
-                            data = data[data.index(";") + 1:]
-                            data = data.replace(";", "")
-                            material_index = data.split(",")
-                            for str in material_index:
-                                material_face_indexes.append(int(str))
+                            self.parse_mesh_material_list(ele)
                             for ch in ele.children:
                                 if ch.element_type == "Material":
-                                    color = ch.data[0:ch.data.index(";;")].replace(" ", "").split(";")
-                                    d = ch.data[ch.data.index(";;") + 2:]
-                                    power = float(d[0:d.index(";")])
-                                    d = d[d.index(";") + 1:]
-                                    specular_color = d[0:d.index(";;")].split(";")
-                                    d = d[d.index(";;") + 2:]
-                                    emission_color = d[0:d.index(";;")].split(";")
-                                    face_color = [1.0, 1.0, 1.0, 1.0]
-                                    for i in range(len(color)):
-                                        face_color[i] = float(color[i])
-                                    material = XMaterial()
-                                    material.face_color = face_color
-                                    material.power = power
-                                    material.specular_color = (
-                                        float(specular_color[0]),
-                                        float(specular_color[1]),
-                                        float(specular_color[2])
-                                    )
-                                    material.emission_color = (
-                                        float(emission_color[0]),
-                                        float(emission_color[1]),
-                                        float(emission_color[2]),
-                                        1.0
-                                    )
-                                    for tex in ch.children:
-                                        if tex.element_type == "TextureFilename":
-                                            path = "/".join(os.path.abspath(self.filepath).split(os.path.sep)[0:-1])
-                                            name = tex.data[tex.data.index("\"") + 1:tex.data.rfind("\"")]
-                                            path = path + "/" + name
-                                            if os.path.exists(path):
-                                                material.texture_path = path
-                                    materials.append(material)
+                                    self.parse_material(ch)
+                else:
+                    if element.element_type == "Material":
+                        self.parse_material(element)
+                    elif element.element_type == "MeshTextureCoords":
+                        self.parse_texture_coords(element)
             material_faces = []
-            for i in range(material_count):
+            for i in range(self.material_count):
                 material_faces.append([])
 
             # マテリアル別に面を整理
-            if material_count > 0:
-                for i in range(len(mesh_faces)):
-                    if len(material_face_indexes) <= i:
-                        material_face_indexes.append(0)
-                    material_id = material_face_indexes[i]
+            if self.material_count > 0:
+                for i in range(len(self.mesh_faces)):
+                    if len(self.material_face_indexes) <= i:
+                        self.material_face_indexes.append(0)
+                    material_id = self.material_face_indexes[i]
                     material_faces[material_id].append(i)
 
             # モデル名を決定
@@ -217,8 +275,8 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
                 vertexes_data = []
                 faces = material_faces[j]
                 # マテリアルの有無
-                available_material = len(materials) > material_face_indexes[faces[0]]
-                x_material = materials[material_face_indexes[faces[0]]]
+                available_material = len(self.materials) > self.material_face_indexes[faces[0]]
+                x_material = self.materials[self.material_face_indexes[faces[0]]]
                 # マテリアルを作成
                 material = bpy.data.materials.new(model_name + "Material")
 
@@ -274,14 +332,15 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
                 # マテリアルが使う頂点だけを抽出、その頂点のインデックスに合わせて面の頂点のインデックスを変更
                 mesh_indexes = {}
                 for i in faces:
-                    face = mesh_faces[i]
+                    face = self.mesh_faces[i]
                     # faces_data.append(face)
                     for k in face:
-                        if mesh_vertexes[k] in vertexes_data:
-                            mesh_indexes[k] = vertexes_data.index(mesh_vertexes[k])
+                        l = self.mesh_vertexes_redirect[k]
+                        if self.mesh_vertexes[l] in vertexes_data:
+                            mesh_indexes[k] = vertexes_data.index(self.mesh_vertexes[l])
                         else:
                             mesh_indexes[k] = len(vertexes_data)
-                            vertexes_data.append(mesh_vertexes[k])
+                            vertexes_data.append(self.mesh_vertexes[l])
                     count = 0
                     face_data = [0] * len(face)
                     for k in face:
@@ -302,8 +361,8 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
                 # UVデータを頂点と紐付ける
                 count = 0
                 for i in faces:
-                    for k in mesh_faces_exact[i]:
-                        uv.data[count].uv = mesh_tex_coord[k]
+                    for k in self.mesh_faces_exact[i]:
+                        uv.data[count].uv = self.mesh_tex_coord[k]
                         count += 1
 
                 mesh.update()
@@ -352,7 +411,7 @@ class ExportDirectXXFile(bpy.types.Operator, ExportHelper):
     def execute(self, context):
         if not self.filepath.endswith(".x"):
             return {'CANCELLED'}
-        x_file_content = '''xof 0302txt 0064
+        x_file_content = '''xof 0302txt 0032
 
 Header {
  1;
@@ -492,7 +551,6 @@ Header {
                         if link.from_node.type == "RGB":
                             for out in link.from_node.outputs:
                                 if out.type == 'RGBA':
-                                    print(out.default_value)
                                     x_file_content += "   " + \
                                                       str(round(out.default_value[0], 6)) + ";" + \
                                                       str(round(out.default_value[1], 6)) + ";" + \
@@ -596,7 +654,7 @@ def register():
             body = response.read()
             json_data = json.loads(body)
             for versions in json_data:
-                if (versions['blender_major'], versions['blender_minor'], versions['blender_subversion'])\
+                if (versions['blender_major'], versions['blender_minor'], versions['blender_subversion']) \
                         <= bpy.app.version:
                     if (versions['version_major'], versions['version_minor'], versions['version_subversion']) \
                             > bl_info['version']:
@@ -608,12 +666,15 @@ def register():
 </head>
 <body>
   <h1>""" + bpy.app.translations.pgettext("The update of XFileSupport is available!") + """</h1>
-  <p>""" + bpy.app.translations.pgettext("Your version:") + " " + str(bl_info['version'][0]) + "." + str(bl_info['version'][1]) + "." + str(bl_info['version'][2]) + """</p>
-  <p>""" + bpy.app.translations.pgettext("New version:") + " " + str(versions['version_major']) + "." + str(versions['version_minor']) + "." + str(versions['version_subversion']) + """</p>
+  <p>""" + bpy.app.translations.pgettext("Your version:") + " " + str(bl_info['version'][0]) + "." + str(
+                            bl_info['version'][1]) + "." + str(bl_info['version'][2]) + """</p>
+  <p>""" + bpy.app.translations.pgettext("New version:") + " " + str(versions['version_major']) + "." + str(
+                            versions['version_minor']) + "." + str(versions['version_subversion']) + """</p>
   <p><a href=""" + versions['download_link'] + ">" + bpy.app.translations.pgettext("Please download from this link.") + """</a></p>
 </body>
 </html>"""
-                        webbrowser.open_new_tab("https://kusaanko.github.io/custom_page.html?"+urllib.parse.quote(html))
+                        webbrowser.open_new_tab(
+                            "https://kusaanko.github.io/custom_page.html?" + urllib.parse.quote(html))
                         break
     except OSError:
         pass
@@ -643,12 +704,18 @@ def to_XElement(x_model_file_string, start_line_num):
         if line_num <= skip:
             continue
         line = x_model_file_string[line_num]
+        pos = line.find("{")
+        if pos != -1 and "}" in line:
+            continue
+
         if "{" in line:
             if element_type == "":
                 element_type = re.sub('\t', "", line[0:line.index("{")])
                 element_type = re.sub('^ *', "", element_type)
                 if element_type.find(" ") != -1:
                     element_type = element_type[0:element_type.find(" ")]
+                if element_type == "":
+                    element_type = "empty"
             else:
                 x_element = to_XElement(x_model_file_string, line_num)
                 children.append(x_element)
@@ -717,3 +784,54 @@ class XMaterial:
     specular_color = ()
     emission_color = ()
     texture_path = ""
+
+
+class NumMatcher:
+
+    def __init__(self, negative=True, decimal=True):
+        self.negative = negative
+        self.decimal = decimal
+        self.target = []
+        self.target_str = ""
+        self.pos = 0
+        self.start = 0
+        self.end = 0
+
+    def set_target(self, target):
+        self.target = list(target)
+        self.target_str = target
+        self.pos = 0
+
+    def find(self):
+        start_num = False
+        negative = False
+        while self.pos < len(self.target):
+            c = self.target[self.pos]
+            if start_num:
+                if not ((self.decimal and c == '.') or ('0' <= c <= '9')):
+                    self.end = self.pos
+                    if negative and self.end - self.start == 1:
+                        start_num = False
+                        negative = False
+                    else:
+                        return True
+            else:
+                if self.negative:
+                    if c == '-':
+                        start_num = True
+                        negative = True
+                        self.start = self.pos
+                if '0' <= c <= '9':
+                    start_num = True
+                    self.start = self.pos
+            self.pos += 1
+        return False
+
+    def get_start(self):
+        return self.start
+
+    def get_end(self):
+        return self.end
+
+    def group(self):
+        return self.target_str[self.start:self.end]
