@@ -598,10 +598,7 @@ template TextureFilename {
                     need_color = True
                     for link in principled.inputs['Base Color'].links:
                         if link.from_node.type == "TEX_IMAGE":
-                            texture = os.path.relpath(
-                                link.from_node.image.filepath,
-                                "/".join(os.path.abspath(self.filepath).split(os.path.sep)[0:-1])
-                            )
+                            texture = os.path.basename(link.from_node.image.filepath)
                         if link.from_node.type == "RGB":
                             need_color = False
                             for out in link.from_node.outputs:
