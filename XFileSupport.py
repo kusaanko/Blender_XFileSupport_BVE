@@ -861,6 +861,9 @@ def float_to_str(f):
             float_string = '{}{}{}.0'.format(sign, digits, zero_padding)
         else:
             float_string = '{}0.{}{}'.format(sign, zero_padding, digits)
+    length = len(float_string[float_string.find(".") + 1:])
+    if length < 6:
+        float_string = float_string + ("0" * (6 - length))
     return float_string
 
 
