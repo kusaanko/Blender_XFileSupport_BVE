@@ -130,6 +130,7 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
                 i = -1
                 # Blenderに記録する際に使用する頂点のインデックス
                 vertexes = []
+                indexes.reverse()
                 for l in range(len(indexes)):
                     if indexes[l] in self.mesh_vertexes_redirect:
                         vertexes.append(self.mesh_vertexes_redirect[indexes[l]])
@@ -528,7 +529,9 @@ template TextureFilename {
                 for polygon in mesh.polygons:
                     ver = []
                     normal = []
-                    for vertex in polygon.vertices:
+                    nor = polygon.normal
+                    vertex_index += len(polygon.vertices) - 1
+                    for vertex in reversed(polygon.vertices):
                         vertex_co = mesh.vertices[vertex].co
                         # スケールに合わせる
                         vertex_co[0] *= self.scale
@@ -541,12 +544,17 @@ template TextureFilename {
                             vertexes_dict[key] = len(vertexes_dict.keys())
                             vertexes.append(vertex_co)
                             uv_data.append(uv_vertexes[vertex_index])
-                        if vertex_to_str(mesh.vertices[vertex].normal) not in normals_dict.keys():
+                        if vertex_to_str(nor) not in normals_dict.keys():
+                            normals_dict[vertex_to_str(nor)] = len(normals_dict.keys())
+                            normals.append(nor)
+                        """if vertex_to_str(mesh.vertices[vertex].normal) not in normals_dict.keys():
                             normals_dict[vertex_to_str(mesh.vertices[vertex].normal)] = len(normals_dict.keys())
-                            normals.append(mesh.vertices[vertex].normal)
+                            normals.append(mesh.vertices[vertex].normal)"""
                         ver.append(vertexes_dict[key])
-                        normal.append(normals_dict[vertex_to_str(mesh.vertices[vertex].normal)])
-                        vertex_index += 1
+                        normal.append(normals_dict[vertex_to_str(nor)])
+                        #normal.append(normals_dict[vertex_to_str(mesh.vertices[vertex].normal)])
+                        vertex_index -= 1
+                    vertex_index += len(polygon.vertices) + 1
                     faces.append(ver)
                     vertex_use_normal.append(normal)
                     if len(mesh.materials) == 0:
