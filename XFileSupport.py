@@ -27,7 +27,7 @@ bl_info = {
     "category": "Import-Export"
 }
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 # locale
 #    (target_context, key): translated_str
