@@ -95,8 +95,8 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
             if i == 3:
                 i = 0
                 # DirectX X Y Z
-                # Blender -X Z Y
-                vector = (-vertex[0], vertex[2], vertex[1])
+                # Blender X Z Y
+                vector = (vertex[0], vertex[2], vertex[1])
                 # 重複した座標は1つにまとめる
                 # リダイレクト先を登録しておく
                 if vector in self.mesh_vertexes:
@@ -813,8 +813,8 @@ def to_XElement(x_model_file_string, start_line_num):
 
 def vertex_to_str(vertex):
     # Blender X Z Y
-    # DirectX -X Y Z
-    return float_to_str(round(-vertex[0], 6)) + ";" + float_to_str(round(vertex[2], 6)) + ";" + float_to_str(round(vertex[1], 6))
+    # DirectX X Y Z
+    return float_to_str(round(vertex[0], 6)) + ";" + float_to_str(round(vertex[2], 6)) + ";" + float_to_str(round(vertex[1], 6))
 
 
 def gen_fake_material():
