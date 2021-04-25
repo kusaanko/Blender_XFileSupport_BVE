@@ -324,10 +324,11 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
                 if x_material.texture_path != "":
                     # 画像ノードを作成
                     texture = material.node_tree.nodes.new("ShaderNodeTexImage")
-                    texture.location = (-300, 300)
+                    texture.location = (-300, 150)
 
                     # 画像を読み込み
                     texture.image = bpy.data.images.load(filepath=x_material.texture_path)
+                    texture.image.colorspace_settings.name = 'Non-Color'
                     # ベースカラーとテクスチャのカラーをリンクさせる
                     material.node_tree.links.new(principled.inputs['Base Color'], texture.outputs['Color'])
                     # アルファとテクスチャのアルファをリンクさせる
