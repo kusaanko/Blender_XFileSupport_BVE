@@ -95,8 +95,8 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
             if i == 3:
                 i = 0
                 # DirectX X Y Z
-                # Blender -X -Z Y
-                vector = (-vertex[0], -vertex[2], vertex[1])
+                # Blender -X Z Y
+                vector = (-vertex[0], vertex[2], vertex[1])
                 # 重複した座標は1つにまとめる
                 # リダイレクト先を登録しておく
                 if vector in self.mesh_vertexes:
@@ -130,7 +130,6 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
                 i = -1
                 # Blenderに記録する際に使用する頂点のインデックス
                 vertexes = []
-                indexes.reverse()
                 for l in range(len(indexes)):
                     if indexes[l] in self.mesh_vertexes_redirect:
                         vertexes.append(self.mesh_vertexes_redirect[indexes[l]])
@@ -530,8 +529,7 @@ template TextureFilename {
                     ver = []
                     normal = []
                     nor = polygon.normal
-                    vertex_index += len(polygon.vertices) - 1
-                    for vertex in reversed(polygon.vertices):
+                    for vertex in polygon.vertices:
                         vertex_co = mesh.vertices[vertex].co
                         # スケールに合わせる
                         vertex_co[0] *= self.scale
@@ -547,14 +545,9 @@ template TextureFilename {
                         if vertex_to_str(nor) not in normals_dict.keys():
                             normals_dict[vertex_to_str(nor)] = len(normals_dict.keys())
                             normals.append(nor)
-                        """if vertex_to_str(mesh.vertices[vertex].normal) not in normals_dict.keys():
-                            normals_dict[vertex_to_str(mesh.vertices[vertex].normal)] = len(normals_dict.keys())
-                            normals.append(mesh.vertices[vertex].normal)"""
                         ver.append(vertexes_dict[key])
                         normal.append(normals_dict[vertex_to_str(nor)])
-                        #normal.append(normals_dict[vertex_to_str(mesh.vertices[vertex].normal)])
-                        vertex_index -= 1
-                    vertex_index += len(polygon.vertices) + 1
+                        vertex_index += 1
                     faces.append(ver)
                     vertex_use_normal.append(normal)
                     if len(mesh.materials) == 0:
@@ -821,7 +814,7 @@ def to_XElement(x_model_file_string, start_line_num):
 def vertex_to_str(vertex):
     # Blender X Z Y
     # DirectX -X Y Z
-    return float_to_str(round(-vertex[0], 6)) + ";" + float_to_str(round(vertex[2], 6)) + ";" + float_to_str(round(-vertex[1], 6))
+    return float_to_str(round(-vertex[0], 6)) + ";" + float_to_str(round(vertex[2], 6)) + ";" + float_to_str(round(vertex[1], 6))
 
 
 def gen_fake_material():
