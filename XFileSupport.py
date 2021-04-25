@@ -457,16 +457,15 @@ Header {
                         vertex_co[2] *= self.scale
                         # 頂点が他のデータと重複していたらそれを使用する
                         # 頂点とUVはセットなのでセットで重複を調べる
-                        if vertex_to_str(vertex_co) + str(uv_vertexes[vertex_index]) \
-                                not in vertexes_dict.keys():
-                            vertexes_dict[vertex_to_str(vertex_co) + str(uv_vertexes[vertex_index])] \
-                                = len(vertexes_dict.keys())
+                        key = vertex_to_str(vertex_co) + str(uv_vertexes[vertex_index].uv)
+                        if key not in vertexes_dict.keys():
+                            vertexes_dict[key] = len(vertexes_dict.keys())
                             vertexes.append(vertex_co)
                             uv_data.append(uv_vertexes[vertex_index])
                         if vertex_to_str(mesh.vertices[vertex].normal) not in normals_dict.keys():
                             normals_dict[vertex_to_str(mesh.vertices[vertex].normal)] = len(normals_dict.keys())
                             normals.append(mesh.vertices[vertex].normal)
-                        ver.append(vertexes_dict[vertex_to_str(vertex_co) + str(uv_vertexes[vertex_index])])
+                        ver.append(vertexes_dict[key])
                         normal.append(normals_dict[vertex_to_str(mesh.vertices[vertex].normal)])
                         vertex_index += 1
                     faces.append(ver)
@@ -482,8 +481,6 @@ Header {
                                 materials_dict[material.name] = len(materials_dict.keys())
                                 materials.append(material)
                         faces_use_material.append(materials_dict[mesh.materials[0].name])
-                # for vertex in mesh.uv_layers[0].data:
-                #    uv_data.append(vertex)
 
         x_file_content += "Mesh {\n"
         x_file_content += " " + str(len(vertexes)) + ";\n"
@@ -612,7 +609,7 @@ Header {
         x_file_content += " MeshTextureCoords {\n"
         x_file_content += "  " + str(len(uv_data)) + ";\n"
         for vertex in uv_data:
-            x_file_content += "  " + str(round(vertex.uv[0], 6)) + ";" + str(round(-vertex.uv[1] + 1, 6)) + ";,\n"
+            x_file_content += "  " + float_to_str(round(vertex.uv[0], 6)) + ";" + float_to_str(round(-vertex.uv[1] + 1, 6)) + ";,\n"
         x_file_content = x_file_content[0:-2] + ";\n"
         x_file_content += " }\n"
         x_file_content += "}\n"
@@ -740,7 +737,7 @@ def to_XElement(x_model_file_string, start_line_num):
 def vertex_to_str(vertex):
     # Blender X Z Y
     # DirectX -X Y Z
-    return str(round(-vertex[0], 6)) + ";" + str(round(vertex[2], 6)) + ";" + str(round(-vertex[1], 6))
+    return float_to_str(round(-vertex[0], 6)) + ";" + float_to_str(round(vertex[2], 6)) + ";" + float_to_str(round(-vertex[1], 6))
 
 
 def gen_fake_material():
@@ -771,6 +768,21 @@ def gen_fake_material():
     # 放射を設定
     principled.inputs['Emission'].default_value = (0.0, 0.0, 0.0, 1.0)
     return material
+
+
+def float_to_str(f):
+    float_string = repr(f)
+    if 'e' in float_string:  # detect scientific notation
+        digits, exp = float_string.split('e')
+        digits = digits.replace('.', '').replace('-', '')
+        exp = int(exp)
+        zero_padding = '0' * (abs(int(exp)) - 1)  # minus 1 for decimal point in the sci notation
+        sign = '-' if f < 0 else ''
+        if exp > 0:
+            float_string = '{}{}{}.0'.format(sign, digits, zero_padding)
+        else:
+            float_string = '{}0.{}{}'.format(sign, zero_padding, digits)
+    return float_string
 
 
 class XElement:
