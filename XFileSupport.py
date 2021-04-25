@@ -275,6 +275,8 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
                 faces_data = []
                 vertexes_data = []
                 faces = material_faces[j]
+                if len(faces) == 0:
+                    continue
                 # マテリアルの有無
                 available_material = len(self.materials) > self.material_face_indexes[faces[0]]
                 x_material = self.materials[self.material_face_indexes[faces[0]]]
