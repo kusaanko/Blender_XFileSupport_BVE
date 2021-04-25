@@ -129,6 +129,7 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
             if i == size:
                 i = -1
                 # Blenderに記録する際に使用する頂点のインデックス
+                indexes.reverse()
                 vertexes = []
                 for l in range(len(indexes)):
                     if indexes[l] in self.mesh_vertexes_redirect:
@@ -529,7 +530,8 @@ template TextureFilename {
                     ver = []
                     normal = []
                     nor = polygon.normal
-                    for vertex in polygon.vertices:
+                    vertex_index += len(polygon.vertices) - 1
+                    for vertex in reversed(polygon.vertices):
                         vertex_co = mesh.vertices[vertex].co
                         # スケールに合わせる
                         vertex_co[0] *= self.scale
@@ -547,7 +549,8 @@ template TextureFilename {
                             normals.append(nor)
                         ver.append(vertexes_dict[key])
                         normal.append(normals_dict[vertex_to_str(nor)])
-                        vertex_index += 1
+                        vertex_index -= 1
+                    vertex_index += len(polygon.vertices) + 1
                     faces.append(ver)
                     vertex_use_normal.append(normal)
                     if len(mesh.materials) == 0:
