@@ -613,19 +613,19 @@ template TextureFilename {
                                 if out.type == 'RGBA':
                                     color = out.default_value
                                     x_file_content += "   " + \
-                                                      str(round(color[0], 6)) + ";" + \
-                                                      str(round(color[1], 6)) + ";" + \
-                                                      str(round(color[2], 6)) + ";" + \
-                                                      str(round(color[3], 6)) + ";;\n"
+                                                      float_to_str(round(color[0], 6)) + ";" + \
+                                                      float_to_str(round(color[1], 6)) + ";" + \
+                                                      float_to_str(round(color[2], 6)) + ";" + \
+                                                      float_to_str(round(color[3], 6)) + ";;\n"
                     if need_color:
                         x_file_content += "   1.000000;1.000000;1.000000;1.000000;;\n"
                 else:
                     color = principled.inputs['Base Color'].default_value
                     x_file_content += "   " + \
-                                      str(round(color[0], 6)) + ";" + \
-                                      str(round(color[1], 6)) + ";" + \
-                                      str(round(color[2], 6)) + ";" + \
-                                      str(round(color[3], 6)) + ";;\n"
+                                      float_to_str(round(color[0], 6)) + ";" + \
+                                      float_to_str(round(color[1], 6)) + ";" + \
+                                      float_to_str(round(color[2], 6)) + ";" + \
+                                      float_to_str(round(color[3], 6)) + ";;\n"
                 # 鏡面反射
                 x_file_content += "   " + str(principled.inputs['Specular'].default_value) + ";\n"
                 # 鏡面反射色
@@ -635,19 +635,19 @@ template TextureFilename {
                             for out in link.from_node.outputs:
                                 if out.type == 'RGBA':
                                     x_file_content += "   " + \
-                                                      str(round(out.default_value[0], 6)) + ";" + \
-                                                      str(round(out.default_value[1], 6)) + ";" + \
-                                                      str(round(out.default_value[2], 6)) + ";;\n"
+                                                      float_to_str(round(out.default_value[0], 6)) + ";" + \
+                                                      float_to_str(round(out.default_value[1], 6)) + ";" + \
+                                                      float_to_str(round(out.default_value[2], 6)) + ";;\n"
                                     break
                 else:
-                    power = str(round(principled.inputs['Specular'].default_value, 6))
+                    power = float_to_str(round(principled.inputs['Specular'].default_value, 6))
                     x_file_content += "   " + power + ";" + power + ";" + power + ";;\n"
 
                 # 放射色
                 x_file_content += "   " + \
-                                  str(round(principled.inputs['Emission'].default_value[0], 6)) + ";" + \
-                                  str(round(principled.inputs['Emission'].default_value[1], 6)) + ";" + \
-                                  str(round(principled.inputs['Emission'].default_value[2], 6)) + ";;\n"
+                                  float_to_str(round(principled.inputs['Emission'].default_value[0], 6)) + ";" + \
+                                  float_to_str(round(principled.inputs['Emission'].default_value[1], 6)) + ";" + \
+                                  float_to_str(round(principled.inputs['Emission'].default_value[2], 6)) + ";;\n"
 
                 if texture != "":
                     x_file_content += "\n   TextureFilename {\n"
@@ -657,16 +657,16 @@ template TextureFilename {
                 # ベースカラー
                 color = material.diffuse_color
                 x_file_content += "   " + \
-                                  str(round(color[0], 6)) + ";" + \
-                                  str(round(color[1], 6)) + ";" + \
-                                  str(round(color[2], 6)) + ";1.000000;;\n"
+                                  float_to_str(round(color[0], 6)) + ";" + \
+                                  float_to_str(round(color[1], 6)) + ";" + \
+                                  float_to_str(round(color[2], 6)) + ";1.000000;;\n"
                 # 鏡面反射
-                x_file_content += "   " + str(material.specular_intensity) + ";\n"
+                x_file_content += "   " + float_to_str(material.specular_intensity) + ";\n"
                 # 鏡面反射色
                 x_file_content += "   " + \
-                                  str(round(material.specular_color[0], 6)) + ";" + \
-                                  str(round(material.specular_color[1], 6)) + ";" + \
-                                  str(round(material.specular_color[2], 6)) + ";;\n"
+                                  float_to_str(round(material.specular_color[0], 6)) + ";" + \
+                                  float_to_str(round(material.specular_color[1], 6)) + ";" + \
+                                  float_to_str(round(material.specular_color[2], 6)) + ";;\n"
                 # 放射色
                 x_file_content += "   0.000000;0.000000;0.000000;;\n"
                 # x_file_content += "   " + \
