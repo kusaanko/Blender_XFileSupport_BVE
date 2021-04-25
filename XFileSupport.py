@@ -284,53 +284,54 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
                 # マテリアルを作成
                 material = bpy.data.materials.new(model_name + "Material")
 
+                # ブレンドモードの設定
+                material.blend_method = 'CLIP'
+                material.shadow_method = 'CLIP'
+
+                # ノードを有効化
+                material.use_nodes = True
+                nodes = material.node_tree.nodes
+                # プリンシプルBSDFを取得
+                principled = next(n for n in nodes if n.type == 'BSDF_PRINCIPLED')
+
                 color = (1.0, 1.0, 1.0)
                 material.specular_intensity = 0.0
                 if available_material:
                     color = x_material.face_color
                     material.specular_intensity = x_material.power
                     material.specular_color = x_material.specular_color
+                    principled.inputs['Base Color'].default_value = color
+                    principled.inputs['Alpha'].default_value = x_material.face_color[3]
                 material.diffuse_color = color
+                # スペキュラーを設定
+                principled.inputs['Specular'].default_value = x_material.power
+                if not (x_material.specular_color[0] == x_material.specular_color[1] and
+                        x_material.specular_color[1] == x_material.specular_color[2]):
+                    rgb = material.node_tree.nodes.new("ShaderNodeRGB")
+                    rgb.location = (-300, 0)
+                    for out in rgb.outputs:
+                        if out.type == 'RGBA':
+                            color = []
+                            color.extend(x_material.specular_color)
+                            color.append(1.0)
+                            out.default_value = color
+                    material.node_tree.links.new(principled.inputs['Specular'], rgb.outputs['Color'])
 
-                # ブレンドモードの設定
-                material.blend_method = 'CLIP'
-                material.shadow_method = 'CLIP'
+                # 放射を設定
+                principled.inputs['Emission'].default_value = x_material.emission_color
 
                 # テクスチャの紐付け
                 if x_material.texture_path != "":
-                    # ノードを有効化
-                    material.use_nodes = True
-
                     # 画像ノードを作成
                     texture = material.node_tree.nodes.new("ShaderNodeTexImage")
                     texture.location = (-300, 300)
 
                     # 画像を読み込み
                     texture.image = bpy.data.images.load(filepath=x_material.texture_path)
-                    nodes = material.node_tree.nodes
-                    # プリンシプルBSDFを取得
-                    principled = next(n for n in nodes if n.type == 'BSDF_PRINCIPLED')
                     # ベースカラーとテクスチャのカラーをリンクさせる
                     material.node_tree.links.new(principled.inputs['Base Color'], texture.outputs['Color'])
                     # アルファとテクスチャのアルファをリンクさせる
                     material.node_tree.links.new(principled.inputs['Alpha'], texture.outputs['Alpha'])
-
-                    # スペキュラーを設定
-                    principled.inputs['Specular'].default_value = x_material.power
-                    if not (x_material.specular_color[0] == x_material.specular_color[1] and
-                            x_material.specular_color[1] == x_material.specular_color[2]):
-                        rgb = material.node_tree.nodes.new("ShaderNodeRGB")
-                        rgb.location = (-300, 0)
-                        for out in rgb.outputs:
-                            if out.type == 'RGBA':
-                                color = []
-                                color.extend(x_material.specular_color)
-                                color.append(1.0)
-                                out.default_value = color
-                        material.node_tree.links.new(principled.inputs['Specular'], rgb.outputs['Color'])
-
-                    # 放射を設定
-                    principled.inputs['Emission'].default_value = x_material.emission_color
 
                 # 頂点データと面データを作成
                 # マテリアルが使う頂点だけを抽出、その頂点のインデックスに合わせて面の頂点のインデックスを変更
@@ -652,10 +653,12 @@ template TextureFilename {
             else:
                 # ベースカラー
                 color = material.diffuse_color
+                print(color)
                 x_file_content += "   " + \
                                   float_to_str(round(color[0], 6)) + ";" + \
                                   float_to_str(round(color[1], 6)) + ";" + \
-                                  float_to_str(round(color[2], 6)) + ";1.000000;;\n"
+                                  float_to_str(round(color[2], 6)) + ";" + \
+                                  float_to_str(round(color[3], 6)) + ";;\n"
                 # 鏡面反射
                 x_file_content += "   " + float_to_str(material.specular_intensity) + ";\n"
                 # 鏡面反射色
