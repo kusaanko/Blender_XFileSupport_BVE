@@ -850,7 +850,6 @@ template TextureFilename {
             else:
                 # ベースカラー
                 color = material.diffuse_color
-                print(color)
                 x_file_content += "   " + \
                                   float_to_str(round(color[0], 6)) + ";" + \
                                   float_to_str(round(color[1], 6)) + ";" + \
@@ -865,10 +864,6 @@ template TextureFilename {
                                   float_to_str(round(material.specular_color[2], 6)) + ";;\n"
                 # 放射色
                 x_file_content += "   0.000000;0.000000;0.000000;;\n"
-                # x_file_content += "   " + \
-                #                  str(principled.inputs['Emission'].default_value[0]) + ";" + \
-                #                  str(principled.inputs['Emission'].default_value[1]) + ";" + \
-                #                  str(principled.inputs['Emission'].default_value[2]) + ";;\n"
             x_file_content += "  }\n\n"
         x_file_content = x_file_content[0:-1]
         x_file_content += " }\n\n"
