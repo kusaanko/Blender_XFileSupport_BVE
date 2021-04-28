@@ -649,28 +649,7 @@ class ExportDirectXXFile(bpy.types.Operator, ExportHelper):
                     normal = []
                     nor = polygon.normal
                     vertex_index += len(polygon.vertices) - 1
-                    for vertex in reversed(polygon.vertices):
-                        vertex_co = mesh.vertices[vertex].co
-                        # スケールに合わせる
-                        vertex_co[0] *= self.scale
-                        vertex_co[1] *= self.scale
-                        vertex_co[2] *= self.scale
-                        # 頂点が他のデータと重複していたらそれを使用する
-                        # 頂点とUVはセットなのでセットで重複を調べる
-                        key = vertex_to_str(vertex_co) + str(uv_vertexes[vertex_index].uv)
-                        if key not in vertexes_dict.keys():
-                            vertexes_dict[key] = len(vertexes_dict.keys())
-                            vertexes.append(vertex_co)
-                            uv_data.append(uv_vertexes[vertex_index])
-                        if vertex_to_str(nor) not in normals_dict.keys():
-                            normals_dict[vertex_to_str(nor)] = len(normals_dict.keys())
-                            normals.append(nor)
-                        ver.append(vertexes_dict[key])
-                        normal.append(normals_dict[vertex_to_str(nor)])
-                        vertex_index -= 1
-                    vertex_index += len(polygon.vertices) + 1
-                    faces.append(ver)
-                    vertex_use_normal.append(normal)
+                    texture = ""
                     if len(mesh.materials) == 0:
                         if fake_material.name not in materials_dict.keys():
                             materials_dict[fake_material.name] = len(materials_dict.keys())
@@ -681,7 +660,44 @@ class ExportDirectXXFile(bpy.types.Operator, ExportHelper):
                             if material.name not in materials_dict.keys():
                                 materials_dict[material.name] = len(materials_dict.keys())
                                 materials.append(material)
+                            if material.use_nodes:
+
+                                # ノードを取得
+                                nodes = material.node_tree.nodes
+                                # プリンシプルBSDFを取得
+                                principled = next(n for n in nodes if n.type == 'BSDF_PRINCIPLED')
+                                # テクスチャの有無を確認
+                                if len(principled.inputs['Base Color'].links) > 0:
+                                    for link in principled.inputs['Base Color'].links:
+                                        if link.from_node.type == "TEX_IMAGE":
+                                            texture = os.path.basename(link.from_node.image.filepath)
                         faces_use_material.append(materials_dict[mesh.materials[0].name])
+
+                    for vertex in reversed(polygon.vertices):
+                        vertex_co = mesh.vertices[vertex].co
+                        # スケールに合わせる
+                        vertex_co[0] *= self.scale
+                        vertex_co[1] *= self.scale
+                        vertex_co[2] *= self.scale
+                        # 頂点が他のデータと重複していたらそれを使用する
+                        # 頂点とUVはセットなのでセットで重複を調べる
+                        uv = uv_vertexes[vertex_index].uv
+                        if texture == "":
+                            uv = (0.0, 0.0)
+                        key = vertex_to_str(vertex_co) + str(uv)
+                        if key not in vertexes_dict.keys():
+                            vertexes_dict[key] = len(vertexes_dict.keys())
+                            vertexes.append(vertex_co)
+                            uv_data.append(uv)
+                        if vertex_to_str(nor) not in normals_dict.keys():
+                            normals_dict[vertex_to_str(nor)] = len(normals_dict.keys())
+                            normals.append(nor)
+                        ver.append(vertexes_dict[key])
+                        normal.append(normals_dict[vertex_to_str(nor)])
+                        vertex_index -= 1
+                    vertex_index += len(polygon.vertices) + 1
+                    faces.append(ver)
+                    vertex_use_normal.append(normal)
 
         for material in materials:
             # ノードを使用するかどうか
@@ -926,8 +942,8 @@ class ExportDirectXXFile(bpy.types.Operator, ExportHelper):
                 write_integer_list(f, [len(uv_data)])
                 vertex_list = []
                 for uv in uv_data:
-                    vertex_list.append(uv.uv[0])
-                    vertex_list.append(-uv.uv[1] + 1)
+                    vertex_list.append(uv[0])
+                    vertex_list.append(-uv[1] + 1)
                 write_float_list(f, vertex_list)
                 write_shorts(f, [TOKEN_CBRACE, TOKEN_NAME])
                 write_str(f, "MeshMaterialList")
@@ -1105,7 +1121,7 @@ template TextureFilename {
             x_file_content += " MeshTextureCoords {\n"
             x_file_content += "  " + str(len(uv_data)) + ";\n"
             for vertex in uv_data:
-                x_file_content += "  " + float_to_str(round(vertex.uv[0], 6)) + ";" + float_to_str(round(-vertex.uv[1] + 1, 6)) + ";,\n"
+                x_file_content += "  " + float_to_str(round(vertex[0], 6)) + ";" + float_to_str(round(-vertex[1] + 1, 6)) + ";,\n"
             x_file_content = x_file_content[0:-2] + ";\n"
             x_file_content += " }\n"
             x_file_content += "}\n"
