@@ -13,6 +13,7 @@ import urllib.request
 import urllib.parse
 import json
 import webbrowser
+import struct
 
 bl_info = {
     "name": "Import/Export DirectX X File (.x) for Bve",
@@ -37,9 +38,43 @@ translations_dict = {
         ("*", "The update of XFileSupport is available!"): "XFileSupportの更新が利用可能です！",
         ("*", "Your version:"): "現在のバージョン:",
         ("*", "New version:"): "新しいバージョン:",
-        ("*", "Please download from this link."): "このリンクからダウンロードしてください。"
+        ("*", "Please download from this link."): "このリンクからダウンロードしてください。",
+        ("*", "This file is not X file!"): "このファイルはXファイルではありません！"
     }
 }
+
+TOKEN_NAME = 1
+TOKEN_STRING = 2
+TOKEN_INTEGER = 3
+TOKEN_GUID = 5
+TOKEN_INTEGER_LIST = 6
+TOKEN_FLOAT_LIST = 7
+
+TOKEN_OBRACE = 0x0A
+TOKEN_CBRACE = 0x0B
+TOKEN_OPAREN = 0x0C
+TOKEN_CPAREN = 0x0D
+TOKEN_OBRACKET = 0x0E
+TOKEN_CBRACKET = 0x0F
+TOKEN_OANGLE = 0x10
+TOKEN_CANGLE = 0x11
+TOKEN_DOT = 0x12
+TOKEN_COMMA = 0x13
+TOKEN_SEMICOLON = 0x14
+TOKEN_TEMPLATE = 0x1F
+TOKEN_WORD = 0x28
+TOKEN_DWORD = 0x29
+TOKEN_FLOAT = 0x2A
+TOKEN_DOUBLE = 0x2B
+TOKEN_CHAR = 0x2C
+TOKEN_UCHAR = 0x2D
+TOKEN_SWORD = 0x2E
+TOKEN_SDWORD = 0x2F
+TOKEN_VOID = 0x30
+TOKEN_LPSTR = 0x31
+TOKEN_UNICODE = 0x32
+TOKEN_CSTRING = 0x33
+TOKEN_ARRAY = 0x34
 
 
 class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
@@ -77,6 +112,15 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
         self.material_face_indexes = []
         self.material_count = 0
         self.materials = []
+        self.is_binary = False
+        self.float_size = 32
+        self.ret_string = ""
+        self.ret_integer = 0
+        self.ret_float = 0
+        self.ret_integer_list = []
+        self.ret_float_list = []
+        self.ret_uuid = ""
+        self.byte_buffer = ByteBuffer(bytes())
 
     def parse_mesh(self, element):
         data = element.data
@@ -199,11 +243,139 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
         )
         for tex in element.children:
             if tex.element_type == "TextureFilename":
-                path = "/".join(os.path.abspath(self.filepath).split(os.path.sep)[0:-1])
-                name = tex.data[tex.data.find("\"") + 1:tex.data.rfind("\"")]
-                path = path + "/" + name
-                if os.path.exists(path):
-                    material.texture_path = path
+                material.texture_path = tex.data[tex.data.find("\"") + 1:tex.data.rfind("\"")]
+        self.materials.append(material)
+
+    def parse_token(self):
+        token = self.byte_buffer.get_short()
+        if token == TOKEN_NAME:
+            length = self.byte_buffer.get_int()
+            self.ret_string = self.byte_buffer.get_length(length).decode()
+        elif token == TOKEN_INTEGER:
+            self.ret_integer = self.byte_buffer.get_int()
+        elif token == TOKEN_STRING:
+            length = self.byte_buffer.get_int()
+            self.ret_string = self.byte_buffer.get_length(length).decode()
+            self.parse_token()
+        elif token == TOKEN_GUID:
+            # GUIDは使用しないため無視する
+            self.byte_buffer.get_int()
+            self.byte_buffer.get_short()
+            self.byte_buffer.get_short()
+            self.byte_buffer.get_length(8)
+        elif token == TOKEN_INTEGER_LIST:
+            length = self.byte_buffer.get_int()
+            self.ret_integer_list = [0] * length
+            for i in range(length):
+                self.ret_integer_list[i] = self.byte_buffer.get_int()
+        elif token == TOKEN_FLOAT_LIST:
+            length = self.byte_buffer.get_int()
+            self.ret_float_list = [0.0] * length
+            if self.float_size == 64:
+                for i in range(length):
+                    self.ret_float_list[i] = self.byte_buffer.get_double()
+            else:
+                for i in range(length):
+                    self.ret_float_list[i] = self.byte_buffer.get_float()
+        elif token == TOKEN_TEMPLATE:
+            # テンプレートは使用する必要がないため無視する
+            self.parse_token_loop(TOKEN_CBRACE)
+        return token
+
+    def parse_token_loop(self, token):
+        while self.parse_token() != token:
+            pass
+
+    def parse_bin(self):
+        self.materials = []
+        while self.byte_buffer.has_remaining():
+            token = self.parse_token()
+            if token == TOKEN_NAME:
+                if self.ret_string == "Mesh":
+                    self.parse_mesh_bin()
+                elif self.ret_string == "MeshTextureCoords":
+                    self.parse_mesh_texture_coords_bin()
+                elif self.ret_string == "MeshMaterialList":
+                    self.parse_mesh_material_list_bin()
+
+    def parse_mesh_bin(self):
+        self.parse_token_loop(TOKEN_INTEGER_LIST)
+        self.parse_token_loop(TOKEN_FLOAT_LIST)
+        self.mesh_vertexes = []
+        i = 0
+        vertex_index = 0
+        while vertex_index < self.ret_integer_list[0]:
+            # DirectX X Y Z
+            # Blender X Z Y
+            vector = (self.ret_float_list[i], self.ret_float_list[i + 2], self.ret_float_list[i + 1])
+            # 重複した座標は1つにまとめる
+            # リダイレクト先を登録しておく
+            if vector in self.mesh_vertexes:
+                self.mesh_vertexes_redirect[vertex_index] = self.mesh_vertexes.index(vector)
+            else:
+                self.mesh_vertexes_redirect[vertex_index] = len(self.mesh_vertexes)
+                self.mesh_vertexes.append(vector)
+            vertex_index += 1
+            i += 3
+        self.parse_token_loop(TOKEN_INTEGER_LIST)
+        self.mesh_faces = []
+        i = 1
+        while i < len(self.ret_integer_list):
+            length = self.ret_integer_list[i]
+            indexes = self.ret_integer_list[i + 1:i + 1 + length]
+            # Blenderに記録する際に使用する頂点のインデックス
+            indexes.reverse()
+            vertexes = []
+            for l in range(len(indexes)):
+                if indexes[l] in self.mesh_vertexes_redirect:
+                    vertexes.append(self.mesh_vertexes_redirect[indexes[l]])
+                else:
+                    vertexes.append(indexes[l])
+            self.mesh_faces.append(vertexes)
+            # Xファイルに記述された実際の使用する頂点のインデックス(UV登録時に使用)
+            self.mesh_faces_exact.append(indexes)
+            i += length + 1
+
+    def parse_mesh_texture_coords_bin(self):
+        self.parse_token_loop(TOKEN_INTEGER_LIST)
+        self.parse_token_loop(TOKEN_FLOAT_LIST)
+        self.mesh_tex_coord = []
+        i = 0
+        while i < len(self.ret_float_list):
+            vertex = [self.ret_float_list[i], self.ret_float_list[i + 1]]
+            vertex[1] = -vertex[1] + 1
+            self.mesh_tex_coord.append(vertex)
+            i += 2
+
+    def parse_mesh_material_list_bin(self):
+        self.parse_token_loop(TOKEN_INTEGER_LIST)
+        self.material_count = self.ret_integer_list[0]
+        i = 2
+        self.material_face_indexes = self.ret_integer_list[2:self.ret_integer_list[1] + 2]
+        pos = self.byte_buffer.pos
+        while True:
+            token = self.parse_token()
+            if token == TOKEN_NAME and self.ret_string == "Material":
+                self.parse_material_bin()
+            else:
+                self.byte_buffer.pos = pos
+                break
+            pos = self.byte_buffer.pos
+
+    def parse_material_bin(self):
+        self.parse_token_loop(TOKEN_FLOAT_LIST)
+        material = XMaterial()
+        material.face_color = self.ret_float_list[0:4]
+        material.power = self.ret_float_list[4]
+        material.specular_color = self.ret_float_list[5:8]
+        material.emission_color = (self.ret_float_list[8], self.ret_float_list[9], self.ret_float_list[10], 1.0)
+        token = self.parse_token()
+        if token == TOKEN_NAME and self.ret_string == "TextureFilename":
+            self.parse_token_loop(TOKEN_STRING)
+            material.texture_path = self.ret_string
+            self.parse_token_loop(TOKEN_CBRACE)
+        if token != TOKEN_CBRACE:
+            self.parse_token_loop(TOKEN_CBRACE)
         self.materials.append(material)
 
     def execute(self, context):
@@ -222,167 +394,191 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
                 bpy.data.materials.remove(material)
 
         # xファイルを読み込み
-        with open(self.filepath) as f:
-            x_model_file_string = f.read().split("\n")
-            x_elements = []
-            x_element = XElement()
+        with open(self.filepath, "rb") as f:
+            header = f.read(16)
+            if header[0:4] == b'xof ':
+                # フォーマットのチェック
+                if header[8:12] == b'txt ':
+                    self.is_binary = False
+                elif header[8:12] == b'bin ':
+                    self.is_binary = True
+            else:
+                raise Exception(bpy.app.translations.pgettext("This file is not X file!"))
 
-            # テキストデータからXElementにパース
-            for line in range(len(x_model_file_string)):
-                if line <= x_element.end_line_num:
-                    continue
-                x_element = to_XElement(x_model_file_string, line)
-                x_elements.append(x_element)
+        if self.is_binary:
+            # バイナリ
+            with open(self.filepath, "rb") as f:
+                f.read(16)
+                data = f.read()
+                self.byte_buffer = ByteBuffer(data)
+                self.parse_bin()
+        else:
+            # テキスト
+            with open(self.filepath) as f:
+                x_model_file_string = f.read().split("\n")
+                x_elements = []
+                x_element = XElement()
 
-            vector_index = 0
+                # テキストデータからXElementにパース
+                for line in range(len(x_model_file_string)):
+                    if line <= x_element.end_line_num:
+                        continue
+                    x_element = to_XElement(x_model_file_string, line)
+                    x_elements.append(x_element)
 
-            # XElementからデータを分析
-            for element in x_elements:
-                if element.element_type == "Mesh":
-                    self.parse_mesh(element)
+                # XElementからデータを分析
+                for element in x_elements:
+                    if element.element_type == "Mesh":
+                        self.parse_mesh(element)
 
-                    for ele in element.children:
-                        # テクスチャの座標(UV)
-                        if ele.element_type == "MeshTextureCoords":
-                            self.parse_texture_coords(ele)
-                        # マテリアルのリスト マテリアル数;\n面の数;\nその面が使用するマテリアルのインデックス,...
-                        if ele.element_type == "MeshMaterialList":
-                            self.parse_mesh_material_list(ele)
-                            for ch in ele.children:
-                                if ch.element_type == "Material":
-                                    self.parse_material(ch)
-                else:
-                    if element.element_type == "Material":
-                        self.parse_material(element)
-                    elif element.element_type == "MeshTextureCoords":
-                        self.parse_texture_coords(element)
-            material_faces = []
-            for i in range(self.material_count):
-                material_faces.append([])
+                        for ele in element.children:
+                            # テクスチャの座標(UV)
+                            if ele.element_type == "MeshTextureCoords":
+                                self.parse_texture_coords(ele)
+                            # マテリアルのリスト マテリアル数;\n面の数;\nその面が使用するマテリアルのインデックス,...
+                            if ele.element_type == "MeshMaterialList":
+                                self.parse_mesh_material_list(ele)
+                                for ch in ele.children:
+                                    if ch.element_type == "Material":
+                                        self.parse_material(ch)
+                    else:
+                        if element.element_type == "Material":
+                            self.parse_material(element)
+                        elif element.element_type == "MeshTextureCoords":
+                            self.parse_texture_coords(element)
+        material_faces = []
+        for i in range(self.material_count):
+            material_faces.append([])
 
-            # マテリアル別に面を整理
-            if self.material_count > 0:
-                for i in range(len(self.mesh_faces)):
-                    if len(self.material_face_indexes) <= i:
-                        self.material_face_indexes.append(0)
-                    material_id = self.material_face_indexes[i]
-                    material_faces[material_id].append(i)
+        # マテリアル別に面を整理
+        if self.material_count > 0:
+            for i in range(len(self.mesh_faces)):
+                if len(self.material_face_indexes) <= i:
+                    self.material_face_indexes.append(0)
+                material_id = self.material_face_indexes[i]
+                material_faces[material_id].append(i)
 
-            # モデル名を決定
-            model_name = os.path.splitext(os.path.basename(self.filepath))[0]
+        # モデル名を決定
+        model_name = os.path.splitext(os.path.basename(self.filepath))[0]
 
-            # マテリアルごとにオブジェクトを作成
-            for j in range(len(material_faces)):
-                faces_data = []
-                vertexes_data = []
-                faces = material_faces[j]
-                if len(faces) == 0:
-                    continue
-                # マテリアルの有無
-                available_material = len(self.materials) > self.material_face_indexes[faces[0]]
-                x_material = self.materials[self.material_face_indexes[faces[0]]]
-                # マテリアルを作成
-                material = bpy.data.materials.new(model_name + "Material")
+        # マテリアルごとにオブジェクトを作成
+        for j in range(len(material_faces)):
+            faces_data = []
+            vertexes_data = []
+            faces = material_faces[j]
+            if len(faces) == 0:
+                continue
+            # マテリアルの有無
+            available_material = len(self.materials) > self.material_face_indexes[faces[0]]
+            x_material = self.materials[self.material_face_indexes[faces[0]]]
+            # マテリアルを作成
+            material = bpy.data.materials.new(model_name + "Material")
 
-                # ブレンドモードの設定
-                material.blend_method = 'CLIP'
-                material.shadow_method = 'CLIP'
+            # ブレンドモードの設定
+            material.blend_method = 'CLIP'
+            material.shadow_method = 'CLIP'
 
-                # ノードを有効化
-                material.use_nodes = True
-                nodes = material.node_tree.nodes
-                # プリンシプルBSDFを取得
-                principled = next(n for n in nodes if n.type == 'BSDF_PRINCIPLED')
+            # ノードを有効化
+            material.use_nodes = True
+            nodes = material.node_tree.nodes
+            # プリンシプルBSDFを取得
+            principled = next(n for n in nodes if n.type == 'BSDF_PRINCIPLED')
 
-                color = (1.0, 1.0, 1.0)
-                material.specular_intensity = 0.0
-                if available_material:
-                    color = x_material.face_color
-                    material.specular_intensity = x_material.power
-                    material.specular_color = x_material.specular_color
-                    principled.inputs['Base Color'].default_value = color
-                    principled.inputs['Alpha'].default_value = x_material.face_color[3]
-                material.diffuse_color = color
-                # スペキュラーを設定
-                principled.inputs['Specular'].default_value = x_material.power
-                if not (x_material.specular_color[0] == x_material.specular_color[1] and
-                        x_material.specular_color[1] == x_material.specular_color[2]):
-                    rgb = material.node_tree.nodes.new("ShaderNodeRGB")
-                    rgb.location = (-300, 0)
-                    for out in rgb.outputs:
-                        if out.type == 'RGBA':
-                            color = []
-                            color.extend(x_material.specular_color)
-                            color.append(1.0)
-                            out.default_value = color
-                    material.node_tree.links.new(principled.inputs['Specular'], rgb.outputs['Color'])
+            color = (1.0, 1.0, 1.0)
+            material.specular_intensity = 0.0
+            if available_material:
+                color = x_material.face_color
+                material.specular_intensity = x_material.power
+                material.specular_color = x_material.specular_color
+                principled.inputs['Base Color'].default_value = color
+                principled.inputs['Alpha'].default_value = x_material.face_color[3]
+            material.diffuse_color = color
+            # スペキュラーを設定
+            principled.inputs['Specular'].default_value = x_material.power
+            if not (x_material.specular_color[0] == x_material.specular_color[1] and
+                    x_material.specular_color[1] == x_material.specular_color[2]):
+                rgb = material.node_tree.nodes.new("ShaderNodeRGB")
+                rgb.location = (-300, 0)
+                for out in rgb.outputs:
+                    if out.type == 'RGBA':
+                        color = []
+                        color.extend(x_material.specular_color)
+                        color.append(1.0)
+                        out.default_value = color
+                material.node_tree.links.new(principled.inputs['Specular'], rgb.outputs['Color'])
 
-                # 放射を設定
-                principled.inputs['Emission'].default_value = x_material.emission_color
+            # 放射を設定
+            principled.inputs['Emission'].default_value = x_material.emission_color
 
-                # テクスチャの紐付け
-                if x_material.texture_path != "":
-                    # 画像ノードを作成
-                    texture = material.node_tree.nodes.new("ShaderNodeTexImage")
-                    texture.location = (-300, 150)
+            # テクスチャの紐付け
+            if x_material.texture_path and x_material.texture_path != "":
+                path = "/".join(os.path.abspath(self.filepath).split(os.path.sep)[0:-1])
+                path = path + "/" + x_material.texture_path
+                if os.path.exists(path):
+                    x_material.texture_path = path
 
-                    # 画像を読み込み
-                    texture.image = bpy.data.images.load(filepath=x_material.texture_path)
-                    texture.image.colorspace_settings.name = 'Non-Color'
-                    # ベースカラーとテクスチャのカラーをリンクさせる
-                    material.node_tree.links.new(principled.inputs['Base Color'], texture.outputs['Color'])
-                    # アルファとテクスチャのアルファをリンクさせる
-                    material.node_tree.links.new(principled.inputs['Alpha'], texture.outputs['Alpha'])
+            if x_material.texture_path != "":
+                # 画像ノードを作成
+                texture = material.node_tree.nodes.new("ShaderNodeTexImage")
+                texture.location = (-300, 150)
 
-                # 頂点データと面データを作成
-                # マテリアルが使う頂点だけを抽出、その頂点のインデックスに合わせて面の頂点のインデックスを変更
-                mesh_indexes = {}
-                for i in faces:
-                    face = self.mesh_faces[i]
-                    # faces_data.append(face)
-                    for k in face:
-                        if self.mesh_vertexes[k] in vertexes_data:
-                            mesh_indexes[k] = vertexes_data.index(self.mesh_vertexes[k])
-                        else:
-                            mesh_indexes[k] = len(vertexes_data)
-                            vertexes_data.append(self.mesh_vertexes[k])
-                    count = 0
-                    face_data = [0] * len(face)
-                    for k in face:
-                        face_data[count] = mesh_indexes[k]
-                        count += 1
-                    faces_data.append(face_data)
+                # 画像を読み込み
+                texture.image = bpy.data.images.load(filepath=x_material.texture_path)
+                texture.image.colorspace_settings.name = 'Non-Color'
+                # ベースカラーとテクスチャのカラーをリンクさせる
+                material.node_tree.links.new(principled.inputs['Base Color'], texture.outputs['Color'])
+                # アルファとテクスチャのアルファをリンクさせる
+                material.node_tree.links.new(principled.inputs['Alpha'], texture.outputs['Alpha'])
 
-                # メッシュを作成
-                mesh = bpy.data.meshes.new("mesh")
-
-                # メッシュに頂点と面のデータを挿入
-                mesh.from_pydata(vertexes_data, [], faces_data)
-
-                # UVレイヤーの作成
-                mesh.uv_layers.new(name="UVMap")
-                uv = mesh.uv_layers["UVMap"]
-
-                # UVデータを頂点と紐付ける
+            # 頂点データと面データを作成
+            # マテリアルが使う頂点だけを抽出、その頂点のインデックスに合わせて面の頂点のインデックスを変更
+            mesh_indexes = {}
+            for i in faces:
+                face = self.mesh_faces[i]
+                # faces_data.append(face)
+                for k in face:
+                    if self.mesh_vertexes[k] in vertexes_data:
+                        mesh_indexes[k] = vertexes_data.index(self.mesh_vertexes[k])
+                    else:
+                        mesh_indexes[k] = len(vertexes_data)
+                        vertexes_data.append(self.mesh_vertexes[k])
                 count = 0
-                for i in faces:
-                    for k in self.mesh_faces_exact[i]:
-                        uv.data[count].uv = self.mesh_tex_coord[k]
-                        count += 1
+                face_data = [0] * len(face)
+                for k in face:
+                    face_data[count] = mesh_indexes[k]
+                    count += 1
+                faces_data.append(face_data)
 
-                mesh.update()
+            # メッシュを作成
+            mesh = bpy.data.meshes.new("mesh")
 
-                # メッシュでオブジェクトを作成
-                obj = bpy.data.objects.new(model_name, mesh)
-                obj.data = mesh
-                obj.data.materials.append(material)
+            # メッシュに頂点と面のデータを挿入
+            mesh.from_pydata(vertexes_data, [], faces_data)
 
-                # オブジェクトをシーンに追加
-                scene = bpy.context.scene
-                scene.collection.objects.link(obj)
-                obj.select_set(True)
-                bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY')
-                obj.select_set(False)
+            # UVレイヤーの作成
+            mesh.uv_layers.new(name="UVMap")
+            uv = mesh.uv_layers["UVMap"]
+
+            # UVデータを頂点と紐付ける
+            count = 0
+            for i in faces:
+                for k in self.mesh_faces_exact[i]:
+                    uv.data[count].uv = self.mesh_tex_coord[k]
+                    count += 1
+
+            mesh.update()
+
+            # メッシュでオブジェクトを作成
+            obj = bpy.data.objects.new(model_name, mesh)
+            obj.data = mesh
+            obj.data.materials.append(material)
+
+            # オブジェクトをシーンに追加
+            scene = bpy.context.scene
+            scene.collection.objects.link(obj)
+            obj.select_set(True)
+            bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY')
+            obj.select_set(False)
 
         return {'FINISHED'}
 
@@ -936,3 +1132,35 @@ class NumMatcher:
 
     def group(self):
         return self.target_str[self.start:self.end]
+
+
+class ByteBuffer:
+
+    def __init__(self, data):
+        self.array = bytearray(data)
+        self.pos = 0
+
+    def get(self):
+        value = self.array[self.pos]
+        self.pos += 1
+        return value
+
+    def get_length(self, length):
+        value = self.array[self.pos:self.pos + length]
+        self.pos += length
+        return value
+
+    def get_int(self):
+        return int.from_bytes(self.get_length(4), byteorder='little')
+
+    def get_short(self):
+        return int.from_bytes(self.get_length(2), byteorder='little')
+
+    def get_float(self):
+        return struct.unpack("<f", self.get_length(4))[0]
+
+    def get_double(self):
+        return struct.unpack("<d", self.get_length(8))[0]
+
+    def has_remaining(self):
+        return len(self.array) > self.pos
