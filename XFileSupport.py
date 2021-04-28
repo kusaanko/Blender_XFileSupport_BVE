@@ -39,7 +39,8 @@ translations_dict = {
         ("*", "Your version:"): "現在のバージョン:",
         ("*", "New version:"): "新しいバージョン:",
         ("*", "Please download from this link."): "このリンクからダウンロードしてください。",
-        ("*", "This file is not X file!"): "このファイルはXファイルではありません！"
+        ("*", "This file is not X file!"): "このファイルはXファイルではありません！",
+        ("*", "Output in binary"): "バイナリで出力",
     }
 }
 
@@ -609,10 +610,351 @@ class ExportDirectXXFile(bpy.types.Operator, ExportHelper):
         default=1.0,
     )
 
+    is_binary: BoolProperty(
+        name="Output in binary",
+        default=False,
+    )
+
     def execute(self, context):
         if not self.filepath.endswith(".x"):
             return {'CANCELLED'}
-        x_file_content = '''xof 0302txt 0032
+
+        vertexes = []
+        vertexes_dict = {}
+        normals = []
+        normals_dict = {}
+        vertex_use_normal = []
+        faces = []
+        materials_dict = {}
+        materials = []
+        x_materials = []
+        faces_use_material = []
+        uv_data = []
+        fake_material = gen_fake_material()
+
+        for obj in bpy.context.scene.objects:
+            if obj.type == 'MESH' and not obj.hide_get():
+                # モディファイヤーを適用した状態のオブジェクトを取得
+                # obj_tmp = obj.copy()
+                obj_tmp = obj.evaluated_get(context.evaluated_depsgraph_get())
+                mesh: bpy.types.Mesh = obj_tmp.data
+                # もとのオブジェクトに影響を与えないためコピー
+                mesh = mesh.copy()
+                # オブジェクトモードでの操作を適用した状態のメッシュを取得
+                mesh.transform(obj.matrix_world)
+                uv_vertexes = mesh.uv_layers[0].data
+                vertex_index = 0
+                for polygon in mesh.polygons:
+                    ver = []
+                    normal = []
+                    nor = polygon.normal
+                    vertex_index += len(polygon.vertices) - 1
+                    for vertex in reversed(polygon.vertices):
+                        vertex_co = mesh.vertices[vertex].co
+                        # スケールに合わせる
+                        vertex_co[0] *= self.scale
+                        vertex_co[1] *= self.scale
+                        vertex_co[2] *= self.scale
+                        # 頂点が他のデータと重複していたらそれを使用する
+                        # 頂点とUVはセットなのでセットで重複を調べる
+                        key = vertex_to_str(vertex_co) + str(uv_vertexes[vertex_index].uv)
+                        if key not in vertexes_dict.keys():
+                            vertexes_dict[key] = len(vertexes_dict.keys())
+                            vertexes.append(vertex_co)
+                            uv_data.append(uv_vertexes[vertex_index])
+                        if vertex_to_str(nor) not in normals_dict.keys():
+                            normals_dict[vertex_to_str(nor)] = len(normals_dict.keys())
+                            normals.append(nor)
+                        ver.append(vertexes_dict[key])
+                        normal.append(normals_dict[vertex_to_str(nor)])
+                        vertex_index -= 1
+                    vertex_index += len(polygon.vertices) + 1
+                    faces.append(ver)
+                    vertex_use_normal.append(normal)
+                    if len(mesh.materials) == 0:
+                        if fake_material.name not in materials_dict.keys():
+                            materials_dict[fake_material.name] = len(materials_dict.keys())
+                            materials.append(fake_material)
+                        faces_use_material.append(materials_dict[fake_material.name])
+                    else:
+                        for material in mesh.materials:
+                            if material.name not in materials_dict.keys():
+                                materials_dict[material.name] = len(materials_dict.keys())
+                                materials.append(material)
+                        faces_use_material.append(materials_dict[mesh.materials[0].name])
+
+        for material in materials:
+            # ノードを使用するかどうか
+            x_material = XMaterial()
+            if material.use_nodes:
+                texture = ""
+
+                # ノードを取得
+                nodes = material.node_tree.nodes
+                # プリンシプルBSDFを取得
+                principled = next(n for n in nodes if n.type == 'BSDF_PRINCIPLED')
+                # ベースカラー
+                if len(principled.inputs['Base Color'].links) > 0:
+                    need_color = True
+                    for link in principled.inputs['Base Color'].links:
+                        if link.from_node.type == "TEX_IMAGE":
+                            texture = os.path.basename(link.from_node.image.filepath)
+                        if link.from_node.type == "RGB":
+                            need_color = False
+                            for out in link.from_node.outputs:
+                                if out.type == 'RGBA':
+                                    x_material.face_color = out.default_value
+                    if need_color:
+                        x_material.face_color = (1.0, 1.0, 1.0, 1.0)
+                else:
+                    x_material.face_color = principled.inputs['Base Color'].default_value
+                # 鏡面反射
+                x_material.power = principled.inputs['Specular'].default_value
+                # 鏡面反射色
+                if len(principled.inputs['Specular'].links) > 0:
+                    for link in principled.inputs['Specular'].links:
+                        if link.from_node.type == "RGB":
+                            for out in link.from_node.outputs:
+                                if out.type == 'RGBA':
+                                    x_material.specular_color = out.default_value
+                                    break
+                else:
+                    power = principled.inputs['Specular'].default_value
+                    x_material.specular_color = (power, power, power)
+
+                # 放射色
+                x_material.emission_color = principled.inputs['Emission'].default_value
+
+                if texture != "":
+                    x_material.texture_path = texture
+            else:
+                # ベースカラー
+                x_material.face_color = material.diffuse_color
+                # 鏡面反射
+                x_material.power = material.specular_intensity
+                # 鏡面反射色
+                x_material.specular_color = material.specular_color
+                # 放射色
+                x_material.emission_color = (0.0, 0.0, 0.0)
+            x_materials.append(x_material)
+
+        if self.is_binary:
+            with open(self.filepath, mode='wb') as f:
+                f.write(b'xof 0302bin 0032')
+                # テンプレート
+                write_shorts(f, [TOKEN_TEMPLATE, TOKEN_NAME])
+                write_str(f, "Vector")
+                write_shorts(f, [TOKEN_OBRACE, TOKEN_GUID])
+                write_guid(f, 0x3D82AB5E, 0x62DA, 0x11CF, b'\xAB\x39\x00\x20\xAF\x71\xE4\x33')
+                write_shorts(f, [TOKEN_FLOAT, TOKEN_NAME])
+                write_str(f, "x")
+                write_shorts(f, [TOKEN_SEMICOLON, TOKEN_FLOAT, TOKEN_NAME])
+                write_str(f, "y")
+                write_shorts(f, [TOKEN_SEMICOLON, TOKEN_FLOAT, TOKEN_NAME])
+                write_str(f, "z")
+                write_shorts(f, [TOKEN_SEMICOLON, TOKEN_CBRACE, TOKEN_TEMPLATE, TOKEN_NAME])
+                write_str(f, "MeshFace")
+                write_shorts(f, [TOKEN_OBRACE, TOKEN_GUID])
+                write_guid(f, 0x3D82AB5F, 0x62DA, 0x11CF, b'\xAB\x39\x00\x20\xAF\x71\xE4\x33')
+                write_shorts(f, [TOKEN_DWORD, TOKEN_NAME])
+                write_str(f, "nFaceVertexIndices")
+                write_shorts(f, [TOKEN_SEMICOLON, TOKEN_ARRAY, TOKEN_DWORD, TOKEN_NAME])
+                write_str(f, "faceVertexIndices")
+                write_shorts(f, [TOKEN_OBRACKET, TOKEN_NAME])
+                write_str(f, "nFaceVertexIndices")
+                write_shorts(f, [TOKEN_CBRACKET, TOKEN_SEMICOLON, TOKEN_CBRACE, TOKEN_TEMPLATE, TOKEN_NAME])
+                write_str(f, "Mesh")
+                write_shorts(f, [TOKEN_OBRACE, TOKEN_GUID])
+                write_guid(f, 0x3D82AB44, 0x62DA, 0x11CF, b'\xAB\x39\x00\x20\xAF\x71\xE4\x33')
+                write_shorts(f, [TOKEN_DWORD, TOKEN_NAME])
+                write_str(f, "nVertices")
+                write_shorts(f, [TOKEN_SEMICOLON, TOKEN_ARRAY, TOKEN_NAME])
+                write_str(f, "Vector")
+                write_shorts(f, [TOKEN_NAME])
+                write_str(f, "vertices")
+                write_shorts(f, [TOKEN_OBRACKET, TOKEN_NAME])
+                write_str(f, "nVertices")
+                write_shorts(f, [TOKEN_CBRACKET, TOKEN_SEMICOLON, TOKEN_DWORD, TOKEN_NAME])
+                write_str(f, "nFaces")
+                write_shorts(f, [TOKEN_SEMICOLON, TOKEN_ARRAY, TOKEN_NAME])
+                write_str(f, "MeshFace")
+                write_shorts(f, [TOKEN_NAME])
+                write_str(f, "faces")
+                write_shorts(f, [TOKEN_OBRACKET, TOKEN_NAME])
+                write_str(f, "nFaces")
+                write_shorts(f, [TOKEN_CBRACKET, TOKEN_SEMICOLON, TOKEN_OBRACKET, TOKEN_DOT, TOKEN_DOT, TOKEN_DOT,
+                                 TOKEN_CBRACKET, TOKEN_CBRACE, TOKEN_TEMPLATE, TOKEN_NAME])
+                write_str(f, "MeshNormals")
+                write_shorts(f, [TOKEN_OBRACE, TOKEN_GUID])
+                write_guid(f, 0xF6F23F43, 0x7686, 0x11CF, b'\x8F\x52\x00\x40\x33\x35\x94\xA3')
+                write_shorts(f, [TOKEN_DWORD, TOKEN_NAME])
+                write_str(f, "nNormals")
+                write_shorts(f, [TOKEN_SEMICOLON, TOKEN_ARRAY, TOKEN_NAME])
+                write_str(f, "Vector")
+                write_shorts(f, [TOKEN_NAME])
+                write_str(f, "normals")
+                write_shorts(f, [TOKEN_OBRACKET, TOKEN_NAME])
+                write_str(f, "nNormals")
+                write_shorts(f, [TOKEN_CBRACKET, TOKEN_SEMICOLON, TOKEN_DWORD, TOKEN_NAME])
+                write_str(f, "nFaceNormals")
+                write_shorts(f, [TOKEN_SEMICOLON, TOKEN_ARRAY, TOKEN_NAME])
+                write_str(f, "MeshFace")
+                write_shorts(f, [TOKEN_NAME])
+                write_str(f, "faceNormals")
+                write_shorts(f, [TOKEN_OBRACKET, TOKEN_NAME])
+                write_str(f, "nFaceNormals")
+                write_shorts(f, [TOKEN_CBRACKET, TOKEN_SEMICOLON, TOKEN_CBRACE, TOKEN_TEMPLATE, TOKEN_NAME])
+                write_str(f, "Coords2d")
+                write_shorts(f, [TOKEN_OBRACE, TOKEN_GUID])
+                write_guid(f, 0xF6F23F44, 0x7686, 0x11CF, b'\x8F\x52\x00\x40\x33\x35\x94\xA3')
+                write_shorts(f, [TOKEN_FLOAT, TOKEN_NAME])
+                write_str(f, "u")
+                write_shorts(f, [TOKEN_SEMICOLON, TOKEN_FLOAT, TOKEN_NAME])
+                write_str(f, "v")
+                write_shorts(f, [TOKEN_SEMICOLON, TOKEN_CBRACE, TOKEN_TEMPLATE, TOKEN_NAME])
+                write_str(f, "MeshTextureCoords")
+                write_shorts(f, [TOKEN_OBRACE, TOKEN_GUID])
+                write_guid(f, 0xF6F23F40, 0x7686, 0x11CF, b'\x8F\x52\x00\x40\x33\x35\x94\xA3')
+                write_shorts(f, [TOKEN_DWORD, TOKEN_NAME])
+                write_str(f, "nTextureCoords")
+                write_shorts(f, [TOKEN_SEMICOLON, TOKEN_ARRAY, TOKEN_NAME])
+                write_str(f, "Coords2d")
+                write_shorts(f, [TOKEN_NAME])
+                write_str(f, "textureCoords")
+                write_shorts(f, [TOKEN_OBRACKET, TOKEN_NAME])
+                write_str(f, "nTextureCoords")
+                write_shorts(f, [TOKEN_CBRACKET, TOKEN_SEMICOLON, TOKEN_CBRACE, TOKEN_TEMPLATE, TOKEN_NAME])
+                write_str(f, "ColorRGBA")
+                write_shorts(f, [TOKEN_OBRACE, TOKEN_GUID])
+                write_guid(f, 0x35FF44E0, 0x6C7C, 0x11CF, b'\x8F\x52\x00\x40\x33\x35\x94\xA3')
+                write_shorts(f, [TOKEN_FLOAT, TOKEN_NAME])
+                write_str(f, "red")
+                write_shorts(f, [TOKEN_SEMICOLON, TOKEN_FLOAT, TOKEN_NAME])
+                write_str(f, "green")
+                write_shorts(f, [TOKEN_SEMICOLON, TOKEN_FLOAT, TOKEN_NAME])
+                write_str(f, "blue")
+                write_shorts(f, [TOKEN_SEMICOLON, TOKEN_FLOAT, TOKEN_NAME])
+                write_str(f, "alpha")
+                write_shorts(f, [TOKEN_SEMICOLON, TOKEN_CBRACE, TOKEN_TEMPLATE, TOKEN_NAME])
+                write_str(f, "ColorRGB")
+                write_shorts(f, [TOKEN_OBRACE, TOKEN_GUID])
+                write_guid(f, 0xD3E16E81, 0x7835, 0x11CF, b'\x8F\x52\x00\x40\x33\x35\x94\xA3')
+                write_shorts(f, [TOKEN_FLOAT, TOKEN_NAME])
+                write_str(f, "red")
+                write_shorts(f, [TOKEN_SEMICOLON, TOKEN_FLOAT, TOKEN_NAME])
+                write_str(f, "green")
+                write_shorts(f, [TOKEN_SEMICOLON, TOKEN_FLOAT, TOKEN_NAME])
+                write_str(f, "blue")
+                write_shorts(f, [TOKEN_SEMICOLON, TOKEN_CBRACE, TOKEN_TEMPLATE, TOKEN_NAME])
+                write_str(f, "Material")
+                write_shorts(f, [TOKEN_OBRACE, TOKEN_GUID])
+                write_guid(f, 0x3D82AB4D, 0x62DA, 0x11CF, b'\xAB\x39\x00\x20\xAF\x71\xE4\x33')
+                write_shorts(f, [TOKEN_NAME])
+                write_str(f, "ColorRGBA")
+                write_shorts(f, [TOKEN_NAME])
+                write_str(f, "faceColor")
+                write_shorts(f, [TOKEN_SEMICOLON, TOKEN_FLOAT, TOKEN_NAME])
+                write_str(f, "power")
+                write_shorts(f, [TOKEN_SEMICOLON, TOKEN_NAME])
+                write_str(f, "ColorRGB")
+                write_shorts(f, [TOKEN_NAME])
+                write_str(f, "specularColor")
+                write_shorts(f, [TOKEN_SEMICOLON, TOKEN_NAME])
+                write_str(f, "ColorRGB")
+                write_shorts(f, [TOKEN_NAME])
+                write_str(f, "emissiveColor")
+                write_shorts(f, [TOKEN_SEMICOLON, TOKEN_OBRACKET, TOKEN_DOT, TOKEN_DOT, TOKEN_DOT,
+                                 TOKEN_CBRACKET, TOKEN_CBRACE, TOKEN_TEMPLATE, TOKEN_NAME])
+                write_str(f, "MeshMaterialList")
+                write_shorts(f, [TOKEN_OBRACE, TOKEN_GUID])
+                write_guid(f, 0xF6F23F42, 0x7686, 0x11CF, b'\x8F\x52\x00\x40\x33\x35\x94\xA3')
+                write_shorts(f, [TOKEN_DWORD, TOKEN_NAME])
+                write_str(f, "nMaterials")
+                write_shorts(f, [TOKEN_SEMICOLON, TOKEN_DWORD, TOKEN_NAME])
+                write_str(f, "nFaceIndexes")
+                write_shorts(f, [TOKEN_SEMICOLON, TOKEN_ARRAY, TOKEN_DWORD, TOKEN_NAME])
+                write_str(f, "faceIndexes")
+                write_shorts(f, [TOKEN_OBRACKET, TOKEN_NAME])
+                write_str(f, "nFaceIndexes")
+                write_shorts(f, [TOKEN_CBRACKET, TOKEN_SEMICOLON, TOKEN_OBRACKET, TOKEN_NAME])
+                write_str(f, "Material")
+                write_shorts(f, [TOKEN_GUID])
+                write_guid(f, 0x3D82AB4D, 0x62DA, 0x11CF, b'\xAB\x39\x00\x20\xAF\x71\xE4\x33')
+                write_shorts(f, [TOKEN_CBRACKET, TOKEN_CBRACE, TOKEN_TEMPLATE, TOKEN_NAME])
+                write_str(f, "TextureFilename")
+                write_shorts(f, [TOKEN_OBRACE, TOKEN_GUID])
+                write_guid(f, 0xA42790E1, 0x7810, 0x11CF, b'\x8F\x52\x00\x40\x33\x35\x94\xA3')
+                write_shorts(f, [TOKEN_LPSTR, TOKEN_NAME])
+                write_str(f, "filename")
+                write_shorts(f, [TOKEN_SEMICOLON, TOKEN_CBRACE])
+                # メッシュ
+                write_shorts(f, [TOKEN_NAME])
+                write_str(f, "Mesh")
+                write_shorts(f, [TOKEN_OBRACE])
+                write_integer_list(f, [len(vertexes)])
+                vertex_list = []
+                for vertex in vertexes:
+                    vertex_list.append(vertex[0])
+                    vertex_list.append(vertex[2])
+                    vertex_list.append(vertex[1])
+                write_float_list(f, vertex_list)
+                faces_list = [len(faces)]
+                for face in faces:
+                    faces_list.append(len(face))
+                    for i in face:
+                        faces_list.append(i)
+                write_integer_list(f, faces_list)
+                write_shorts(f, [TOKEN_NAME])
+                write_str(f, "MeshNormals")
+                write_shorts(f, [TOKEN_OBRACE])
+                write_integer_list(f, [len(normals)])
+                vertex_list = []
+                for vertex in normals:
+                    vertex_list.append(vertex[0])
+                    vertex_list.append(vertex[2])
+                    vertex_list.append(vertex[1])
+                write_float_list(f, vertex_list)
+                faces_list = [len(vertex_use_normal)]
+                for face in vertex_use_normal:
+                    faces_list.append(len(face))
+                    for i in face:
+                        faces_list.append(i)
+                write_integer_list(f, faces_list)
+                write_shorts(f, [TOKEN_CBRACE, TOKEN_NAME])
+                write_str(f, "MeshTextureCoords")
+                write_shorts(f, [TOKEN_OBRACE])
+                write_integer_list(f, [len(uv_data)])
+                vertex_list = []
+                for uv in uv_data:
+                    vertex_list.append(uv.uv[0])
+                    vertex_list.append(-uv.uv[1] + 1)
+                write_float_list(f, vertex_list)
+                write_shorts(f, [TOKEN_CBRACE, TOKEN_NAME])
+                write_str(f, "MeshMaterialList")
+                write_shorts(f, [TOKEN_OBRACE])
+                index_list = [len(x_materials), len(faces_use_material)]
+                index_list[2:len(faces_use_material) + 2] = faces_use_material
+                write_integer_list(f, index_list)
+                for x_material in x_materials:
+                    write_shorts(f, [TOKEN_NAME])
+                    write_str(f, "Material")
+                    write_shorts(f, [TOKEN_OBRACE])
+                    color_list = [0.0] * 11
+                    color_list[0:4] = x_material.face_color[0:4]
+                    color_list[4] = x_material.power
+                    color_list[5:8] = x_material.specular_color[0:3]
+                    color_list[8:11] = x_material.emission_color[0:3]
+                    write_float_list(f, color_list)
+                    if x_material.texture_path != "":
+                        write_shorts(f, [TOKEN_NAME])
+                        write_str(f, "TextureFilename")
+                        write_shorts(f, [TOKEN_OBRACE, TOKEN_STRING])
+                        write_str(f, x_material.texture_path)
+                        write_shorts(f, [TOKEN_SEMICOLON, TOKEN_CBRACE])
+                    write_shorts(f, [TOKEN_CBRACE])
+                write_shorts(f, [TOKEN_CBRACE, TOKEN_CBRACE])
+        else:
+            x_file_content = '''xof 0302txt 0032
 
 Header {
  1;
@@ -700,201 +1042,80 @@ template TextureFilename {
 }
 
 '''
-        vertexes = []
-        vertexes_dict = {}
-        normals = []
-        normals_dict = {}
-        vertex_use_normal = []
-        faces = []
-        materials_dict = {}
-        materials = []
-        faces_use_material = []
-        uv_data = []
-        fake_material = gen_fake_material()
 
-        for obj in bpy.context.scene.objects:
-            if obj.type == 'MESH' and not obj.hide_get():
-                # モディファイヤーを適用した状態のオブジェクトを取得
-                # obj_tmp = obj.copy()
-                obj_tmp = obj.evaluated_get(context.evaluated_depsgraph_get())
-                mesh: bpy.types.Mesh = obj_tmp.data
-                # もとのオブジェクトに影響を与えないためコピー
-                mesh = mesh.copy()
-                # オブジェクトモードでの操作を適用した状態のメッシュを取得
-                mesh.transform(obj.matrix_world)
-                uv_vertexes = mesh.uv_layers[0].data
-                vertex_index = 0
-                for polygon in mesh.polygons:
-                    ver = []
-                    normal = []
-                    nor = polygon.normal
-                    vertex_index += len(polygon.vertices) - 1
-                    for vertex in reversed(polygon.vertices):
-                        vertex_co = mesh.vertices[vertex].co
-                        # スケールに合わせる
-                        vertex_co[0] *= self.scale
-                        vertex_co[1] *= self.scale
-                        vertex_co[2] *= self.scale
-                        # 頂点が他のデータと重複していたらそれを使用する
-                        # 頂点とUVはセットなのでセットで重複を調べる
-                        key = vertex_to_str(vertex_co) + str(uv_vertexes[vertex_index].uv)
-                        if key not in vertexes_dict.keys():
-                            vertexes_dict[key] = len(vertexes_dict.keys())
-                            vertexes.append(vertex_co)
-                            uv_data.append(uv_vertexes[vertex_index])
-                        if vertex_to_str(nor) not in normals_dict.keys():
-                            normals_dict[vertex_to_str(nor)] = len(normals_dict.keys())
-                            normals.append(nor)
-                        ver.append(vertexes_dict[key])
-                        normal.append(normals_dict[vertex_to_str(nor)])
-                        vertex_index -= 1
-                    vertex_index += len(polygon.vertices) + 1
-                    faces.append(ver)
-                    vertex_use_normal.append(normal)
-                    if len(mesh.materials) == 0:
-                        if fake_material.name not in materials_dict.keys():
-                            materials_dict[fake_material.name] = len(materials_dict.keys())
-                            materials.append(fake_material)
-                        faces_use_material.append(materials_dict[fake_material.name])
-                    else:
-                        for material in mesh.materials:
-                            if material.name not in materials_dict.keys():
-                                materials_dict[material.name] = len(materials_dict.keys())
-                                materials.append(material)
-                        faces_use_material.append(materials_dict[mesh.materials[0].name])
+            x_file_content += "Mesh {\n"
+            x_file_content += " " + str(len(vertexes)) + ";\n"
 
-        x_file_content += "Mesh {\n"
-        x_file_content += " " + str(len(vertexes)) + ";\n"
+            # 頂点データ
+            for vertex in vertexes:
+                x_file_content += " " + vertex_to_str(vertex) + ";,\n"
+            x_file_content = x_file_content[0:-2] + ";\n"
 
-        # 頂点データ
-        for vertex in vertexes:
-            x_file_content += " " + vertex_to_str(vertex) + ";,\n"
-        x_file_content = x_file_content[0:-2] + ";\n"
+            # 面データ
+            x_file_content += " " + str(len(faces)) + ";\n"
+            for face in faces:
+                x_file_content += " " + str(len(face)) + ";" + str(face).replace(" ", "")[1:-1] + ";,\n"
+            x_file_content = x_file_content[0:-2] + ";\n\n"
 
-        # 面データ
-        x_file_content += " " + str(len(faces)) + ";\n"
-        for face in faces:
-            x_file_content += " " + str(len(face)) + ";" + str(face).replace(" ", "")[1:-1] + ";,\n"
-        x_file_content = x_file_content[0:-2] + ";\n\n"
+            # マテリアルデータ
+            x_file_content += " MeshMaterialList {\n"
+            x_file_content += "  " + str(len(materials)) + ";\n"
+            x_file_content += "  " + str(len(faces_use_material)) + ";\n"
+            for material_index in faces_use_material:
+                x_file_content += "  " + str(material_index) + ",\n"
+            x_file_content = x_file_content[0:-2] + ";\n\n"
 
-        # マテリアルデータ
-        x_file_content += " MeshMaterialList {\n"
-        x_file_content += "  " + str(len(materials)) + ";\n"
-        x_file_content += "  " + str(len(faces_use_material)) + ";\n"
-        for material_index in faces_use_material:
-            x_file_content += "  " + str(material_index) + ",\n"
-        x_file_content = x_file_content[0:-2] + ";\n\n"
-
-        for material in materials:
-            x_file_content += "  Material {\n"
-            # ノードを使用するかどうか
-            if material.use_nodes:
-                texture = ""
-
-                # ノードを取得
-                nodes = material.node_tree.nodes
-                # プリンシプルBSDFを取得
-                principled = next(n for n in nodes if n.type == 'BSDF_PRINCIPLED')
-                # ベースカラー
-                if len(principled.inputs['Base Color'].links) > 0:
-                    need_color = True
-                    for link in principled.inputs['Base Color'].links:
-                        if link.from_node.type == "TEX_IMAGE":
-                            texture = os.path.basename(link.from_node.image.filepath)
-                        if link.from_node.type == "RGB":
-                            need_color = False
-                            for out in link.from_node.outputs:
-                                if out.type == 'RGBA':
-                                    color = out.default_value
-                                    x_file_content += "   " + \
-                                                      float_to_str(round(color[0], 6)) + ";" + \
-                                                      float_to_str(round(color[1], 6)) + ";" + \
-                                                      float_to_str(round(color[2], 6)) + ";" + \
-                                                      float_to_str(round(color[3], 6)) + ";;\n"
-                    if need_color:
-                        x_file_content += "   1.000000;1.000000;1.000000;1.000000;;\n"
-                else:
-                    color = principled.inputs['Base Color'].default_value
-                    x_file_content += "   " + \
-                                      float_to_str(round(color[0], 6)) + ";" + \
-                                      float_to_str(round(color[1], 6)) + ";" + \
-                                      float_to_str(round(color[2], 6)) + ";" + \
-                                      float_to_str(round(color[3], 6)) + ";;\n"
-                # 鏡面反射
-                x_file_content += "   " + str(principled.inputs['Specular'].default_value) + ";\n"
-                # 鏡面反射色
-                if len(principled.inputs['Specular'].links) > 0:
-                    for link in principled.inputs['Specular'].links:
-                        if link.from_node.type == "RGB":
-                            for out in link.from_node.outputs:
-                                if out.type == 'RGBA':
-                                    x_file_content += "   " + \
-                                                      float_to_str(round(out.default_value[0], 6)) + ";" + \
-                                                      float_to_str(round(out.default_value[1], 6)) + ";" + \
-                                                      float_to_str(round(out.default_value[2], 6)) + ";;\n"
-                                    break
-                else:
-                    power = float_to_str(round(principled.inputs['Specular'].default_value, 6))
-                    x_file_content += "   " + power + ";" + power + ";" + power + ";;\n"
-
-                # 放射色
+            for x_material in x_materials:
+                x_file_content += "  Material {\n"
                 x_file_content += "   " + \
-                                  float_to_str(round(principled.inputs['Emission'].default_value[0], 6)) + ";" + \
-                                  float_to_str(round(principled.inputs['Emission'].default_value[1], 6)) + ";" + \
-                                  float_to_str(round(principled.inputs['Emission'].default_value[2], 6)) + ";;\n"
-
-                if texture != "":
+                                  float_to_str(round(x_material.face_color[0], 6)) + ";" + \
+                                  float_to_str(round(x_material.face_color[1], 6)) + ";" + \
+                                  float_to_str(round(x_material.face_color[2], 6)) + ";" + \
+                                  float_to_str(round(x_material.face_color[3], 6)) + ";;\n"
+                x_file_content += "   " + float_to_str(round(x_material.power, 6)) + ";\n"
+                x_file_content += "   " + \
+                                  float_to_str(round(x_material.specular_color[0], 6)) + ";" + \
+                                  float_to_str(round(x_material.specular_color[1], 6)) + ";" + \
+                                  float_to_str(round(x_material.specular_color[2], 6)) + ";;\n"
+                x_file_content += "   " + \
+                                  float_to_str(round(x_material.emission_color[0], 6)) + ";" + \
+                                  float_to_str(round(x_material.emission_color[1], 6)) + ";" + \
+                                  float_to_str(round(x_material.emission_color[2], 6)) + ";;\n"
+                if x_material.texture_path != "":
                     x_file_content += "\n   TextureFilename {\n"
-                    x_file_content += "    \"" + texture + "\";\n"
+                    x_file_content += "    \"" + x_material.texture_path + "\";\n"
                     x_file_content += "   }\n"
-            else:
-                # ベースカラー
-                color = material.diffuse_color
-                x_file_content += "   " + \
-                                  float_to_str(round(color[0], 6)) + ";" + \
-                                  float_to_str(round(color[1], 6)) + ";" + \
-                                  float_to_str(round(color[2], 6)) + ";" + \
-                                  float_to_str(round(color[3], 6)) + ";;\n"
-                # 鏡面反射
-                x_file_content += "   " + float_to_str(material.specular_intensity) + ";\n"
-                # 鏡面反射色
-                x_file_content += "   " + \
-                                  float_to_str(round(material.specular_color[0], 6)) + ";" + \
-                                  float_to_str(round(material.specular_color[1], 6)) + ";" + \
-                                  float_to_str(round(material.specular_color[2], 6)) + ";;\n"
-                # 放射色
-                x_file_content += "   0.000000;0.000000;0.000000;;\n"
-            x_file_content += "  }\n\n"
-        x_file_content = x_file_content[0:-1]
-        x_file_content += " }\n\n"
+                x_file_content += "  }\n\n"
+            x_file_content = x_file_content[0:-1]
+            x_file_content += " }\n\n"
 
-        # 法線データ
-        x_file_content += " MeshNormals {\n"
-        x_file_content += "  " + str(len(normals)) + ";\n"
-        for normal in normals:
-            x_file_content += "  " + vertex_to_str(normal) + ";,\n"
-        x_file_content = x_file_content[0:-2] + ";\n"
-        x_file_content += "  " + str(len(vertex_use_normal)) + ";\n"
-        for vertex in vertex_use_normal:
-            x_file_content += "  " + str(len(vertex)) + ";" + str(vertex).replace(" ", "")[1:-1] + ";,\n"
-        x_file_content = x_file_content[0:-2] + ";\n"
-        x_file_content += " }\n\n"
+            # 法線データ
+            x_file_content += " MeshNormals {\n"
+            x_file_content += "  " + str(len(normals)) + ";\n"
+            for normal in normals:
+                x_file_content += "  " + vertex_to_str(normal) + ";,\n"
+            x_file_content = x_file_content[0:-2] + ";\n"
+            x_file_content += "  " + str(len(vertex_use_normal)) + ";\n"
+            for vertex in vertex_use_normal:
+                x_file_content += "  " + str(len(vertex)) + ";" + str(vertex).replace(" ", "")[1:-1] + ";,\n"
+            x_file_content = x_file_content[0:-2] + ";\n"
+            x_file_content += " }\n\n"
 
-        # UVデータ
-        x_file_content += " MeshTextureCoords {\n"
-        x_file_content += "  " + str(len(uv_data)) + ";\n"
-        for vertex in uv_data:
-            x_file_content += "  " + float_to_str(round(vertex.uv[0], 6)) + ";" + float_to_str(round(-vertex.uv[1] + 1, 6)) + ";,\n"
-        x_file_content = x_file_content[0:-2] + ";\n"
-        x_file_content += " }\n"
-        x_file_content += "}\n"
+            # UVデータ
+            x_file_content += " MeshTextureCoords {\n"
+            x_file_content += "  " + str(len(uv_data)) + ";\n"
+            for vertex in uv_data:
+                x_file_content += "  " + float_to_str(round(vertex.uv[0], 6)) + ";" + float_to_str(round(-vertex.uv[1] + 1, 6)) + ";,\n"
+            x_file_content = x_file_content[0:-2] + ";\n"
+            x_file_content += " }\n"
+            x_file_content += "}\n"
+
+            with open(self.filepath, mode='w') as f:
+                f.write(x_file_content)
 
         # 生成した偽物のマテリアルを削除
         fake_material.user_clear()
         bpy.data.materials.remove(fake_material)
-
-        with open(self.filepath, mode='w') as f:
-            f.write(x_file_content)
 
         return {'FINISHED'}
 
@@ -1061,6 +1282,48 @@ def float_to_str(f):
     if length < 6:
         float_string = float_string + ("0" * (6 - length))
     return float_string
+
+
+def write_int(f, i):
+    f.write(i.to_bytes(4, byteorder='little'))
+
+
+def write_short(f, i):
+    f.write(i.to_bytes(2, byteorder='little'))
+
+
+def write_float(f, i):
+    f.write(struct.pack('<f', float(i)))
+
+
+def write_shorts(f, shorts):
+    for s in shorts:
+        write_short(f, s)
+
+
+def write_str(f, string):
+    write_int(f, len(string))
+    f.write(string.encode())
+
+
+def write_guid(f, data1, data2, data3, data4):
+    write_int(f, data1)
+    write_shorts(f, [data2, data3])
+    f.write(data4)
+
+
+def write_integer_list(f, i_list):
+    write_short(f, TOKEN_INTEGER_LIST)
+    write_int(f, len(i_list))
+    for i in i_list:
+        write_int(f, i)
+
+
+def write_float_list(f, f_list):
+    write_short(f, TOKEN_FLOAT_LIST)
+    write_int(f, len(f_list))
+    for i in f_list:
+        write_float(f, i)
 
 
 class XElement:
