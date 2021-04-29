@@ -106,6 +106,11 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
         default=True,
     )
 
+    scale: FloatProperty(
+        name="Scale",
+        default=1.0
+    )
+
     def __init__(self):
         self.mesh_vertexes = []
         self.mesh_faces = []
@@ -144,7 +149,7 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
                 i = 0
                 # DirectX X Y Z
                 # Blender X Z Y
-                vector = (vertex[0], vertex[2], vertex[1])
+                vector = (vertex[0] * self.scale, vertex[2] * self.scale, vertex[1] * self.scale)
                 # 重複した座標は1つにまとめる
                 # リダイレクト先を登録しておく
                 if vector in self.mesh_vertexes:
@@ -311,7 +316,11 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
         while vertex_index < self.ret_integer_list[0]:
             # DirectX X Y Z
             # Blender X Z Y
-            vector = (self.ret_float_list[i], self.ret_float_list[i + 2], self.ret_float_list[i + 1])
+            vector = (
+                self.ret_float_list[i] * self.scale,
+                self.ret_float_list[i + 2] * self.scale,
+                self.ret_float_list[i + 1] * self.scale
+            )
             # 重複した座標は1つにまとめる
             # リダイレクト先を登録しておく
             if vector in self.mesh_vertexes:
