@@ -666,6 +666,7 @@ class ExportDirectXXFile(bpy.types.Operator, ExportHelper):
                 for polygon in mesh.polygons:
                     ver = []
                     normal = []
+                    smooth_shading = polygon.use_smooth
                     nor = polygon.normal
                     vertex_index += len(polygon.vertices) - 1
                     texture = ""
@@ -708,6 +709,8 @@ class ExportDirectXXFile(bpy.types.Operator, ExportHelper):
                             vertexes_dict[key] = len(vertexes_dict.keys())
                             vertexes.append(vertex_co)
                             uv_data.append(uv)
+                        if smooth_shading:
+                            nor = mesh.vertices[vertex].normal
                         if vertex_to_str(nor) not in normals_dict.keys():
                             normals_dict[vertex_to_str(nor)] = len(normals_dict.keys())
                             normals.append(nor)
