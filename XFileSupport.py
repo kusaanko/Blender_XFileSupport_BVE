@@ -7,7 +7,7 @@
 import os
 import re
 import bpy
-from bpy.props import StringProperty, BoolProperty, FloatProperty
+from bpy.props import StringProperty, BoolProperty, FloatProperty, EnumProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 import urllib.request
 import urllib.parse
@@ -40,7 +40,10 @@ translations_dict = {
         ("*", "New version:"): "新しいバージョン:",
         ("*", "Please download from this link."): "このリンクからダウンロードしてください。",
         ("*", "This file is not X file!"): "このファイルはXファイルではありません！",
-        ("*", "Output in binary"): "バイナリで出力",
+        ("*", "Output mode"): "出力モード",
+        ("*", "Binary"): "バイナリ",
+        ("*", "Text mode"): "テキストモード",
+        ("*", "Binary mode"): "バイナリモード",
     }
 }
 
@@ -610,9 +613,12 @@ class ExportDirectXXFile(bpy.types.Operator, ExportHelper):
         default=1.0,
     )
 
-    is_binary: BoolProperty(
-        name="Output in binary",
-        default=False,
+    mode: EnumProperty(
+        items=[
+            ("text", "Text", "Text mode"),
+            ("binary", "Binary", "Binary mode"),
+        ],
+        name="Output mode"
     )
 
     def execute(self, context):
@@ -631,6 +637,10 @@ class ExportDirectXXFile(bpy.types.Operator, ExportHelper):
         faces_use_material = []
         uv_data = []
         fake_material = gen_fake_material()
+
+        is_binary = False
+        if self.mode == "binary":
+            is_binary = True
 
         for obj in bpy.context.scene.objects:
             if obj.type == 'MESH' and not obj.hide_get():
@@ -754,7 +764,7 @@ class ExportDirectXXFile(bpy.types.Operator, ExportHelper):
                 x_material.emission_color = (0.0, 0.0, 0.0)
             x_materials.append(x_material)
 
-        if self.is_binary:
+        if is_binary:
             with open(self.filepath, mode='wb') as f:
                 f.write(b'xof 0302bin 0032')
                 # テンプレート
