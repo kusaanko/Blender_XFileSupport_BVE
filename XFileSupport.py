@@ -18,7 +18,7 @@ import struct
 bl_info = {
     "name": "Import/Export DirectX X File (.x) for Bve",
     "author": "kusaanko",
-    "version": (1, 2, 0),
+    "version": (2, 0, 0),
     "blender": (2, 80, 3),
     "location": "File > Import / Export > DirectX XFile(.x)",
     "description": "Import/Export files in the DirectX X file (.x)",
@@ -28,7 +28,7 @@ bl_info = {
     "category": "Import-Export"
 }
 
-__version__ = "1.2.0"
+__version__ = "2.0.0"
 
 # locale
 #    (target_context, key): translated_str
