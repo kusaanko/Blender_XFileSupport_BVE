@@ -506,20 +506,9 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
                 principled.inputs['Base Color'].default_value = color
                 principled.inputs['Alpha'].default_value = x_material.face_color[3]
             material.diffuse_color = color
-            # スペキュラーを設定
-            principled.inputs['Specular'].default_value = x_material.power
-            if not (x_material.specular_color[0] == x_material.specular_color[1] and
-                    x_material.specular_color[1] == x_material.specular_color[2]):
-                rgb = material.node_tree.nodes.new("ShaderNodeRGB")
-                rgb.location = (-300, 0)
-                for out in rgb.outputs:
-                    if out.type == 'RGBA':
-                        color = []
-                        color.extend(x_material.specular_color)
-                        color.append(1.0)
-                        out.default_value = color
-                material.node_tree.links.new(principled.inputs['Specular'], rgb.outputs['Color'])
 
+            # 鏡面反射
+            principled.inputs['Specular'].default_value = 0.0
             # 放射を設定
             principled.inputs['Emission'].default_value = x_material.emission_color
 
@@ -747,18 +736,8 @@ class ExportDirectXXFile(bpy.types.Operator, ExportHelper):
                 else:
                     x_material.face_color = principled.inputs['Base Color'].default_value
                 # 鏡面反射
-                x_material.power = principled.inputs['Specular'].default_value
-                # 鏡面反射色
-                if len(principled.inputs['Specular'].links) > 0:
-                    for link in principled.inputs['Specular'].links:
-                        if link.from_node.type == "RGB":
-                            for out in link.from_node.outputs:
-                                if out.type == 'RGBA':
-                                    x_material.specular_color = out.default_value
-                                    break
-                else:
-                    power = principled.inputs['Specular'].default_value
-                    x_material.specular_color = (power, power, power)
+                x_material.power = 0.0
+                x_material.specular_color = (0.0, 0.0, 0.0)
 
                 # 放射色
                 x_material.emission_color = principled.inputs['Emission'].default_value
