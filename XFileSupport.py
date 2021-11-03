@@ -670,7 +670,6 @@ class ExportDirectXXFile(bpy.types.Operator, ExportHelper):
                                 materials_dict[material.name] = len(materials_dict.keys())
                                 materials.append(material)
                             if material.use_nodes:
-
                                 # ノードを取得
                                 nodes = material.node_tree.nodes
                                 # プリンシプルBSDFを取得
@@ -680,7 +679,7 @@ class ExportDirectXXFile(bpy.types.Operator, ExportHelper):
                                     for link in principled.inputs['Base Color'].links:
                                         if link.from_node.type == "TEX_IMAGE":
                                             texture = os.path.basename(link.from_node.image.filepath)
-                        faces_use_material.append(materials_dict[mesh.materials[0].name])
+                        faces_use_material.append(materials_dict[mesh.materials[polygon.material_index].name])
 
                     for vertex in reversed(polygon.vertices):
                         vertex_co = mesh.vertices[vertex].co
