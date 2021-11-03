@@ -1248,7 +1248,6 @@ def to_XElement(x_model_file_string, start_line_num):
             if element_type == "":
                 element_type = re.sub('\t', "", line[0:line.index("{")])
                 element_type = re.sub('^ *', "", element_type)
-                print(element_type.replace(" ", "a"))
                 if element_type.find(" ") != -1:
                     element_name = element_type[element_type.find(" ") + 1:]
                     element_type = element_type[0:element_type.find(" ")]
