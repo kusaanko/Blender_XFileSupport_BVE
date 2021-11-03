@@ -44,6 +44,7 @@ translations_dict = {
         ("*", "Binary"): "バイナリ",
         ("*", "Text mode"): "テキストモード",
         ("*", "Binary mode"): "バイナリモード",
+        ("*", "Export material name"): "マテリアル名を出力する",
     }
 }
 
@@ -250,6 +251,7 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
             float(emission_color[2]),
             1.0
         )
+        material.name = element.name
         for tex in element.children:
             if tex.element_type == "TextureFilename":
                 material.texture_path = tex.data[tex.data.find("\"") + 1:tex.data.rfind("\"")]
@@ -376,8 +378,13 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
             pos = self.byte_buffer.pos
 
     def parse_material_bin(self):
+        token = self.parse_token()
+        material_name = ""
+        if token == TOKEN_NAME:
+            material_name = self.ret_string
         self.parse_token_loop(TOKEN_FLOAT_LIST)
         material = XMaterial()
+        material.name = material_name
         material.face_color = self.ret_float_list[0:4]
         material.power = self.ret_float_list[4]
         material.specular_color = self.ret_float_list[5:8]
@@ -485,7 +492,10 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
             available_material = len(self.materials) > self.material_face_indexes[faces[0]]
             x_material = self.materials[self.material_face_indexes[faces[0]]]
             # マテリアルを作成
-            material = bpy.data.materials.new(model_name + "Material")
+            material_name = model_name + "Material"
+            if x_material.name:
+                material_name = x_material.name
+            material = bpy.data.materials.new(material_name)
 
             # ブレンドモードの設定
             material.blend_method = 'CLIP'
@@ -619,6 +629,11 @@ class ExportDirectXXFile(bpy.types.Operator, ExportHelper):
         name="Output mode"
     )
 
+    export_material_name: BoolProperty(
+        name="Export material name",
+        default=True,
+    )
+
     def execute(self, context):
         if not self.filepath.endswith(".x"):
             return {'CANCELLED'}
@@ -712,6 +727,9 @@ class ExportDirectXXFile(bpy.types.Operator, ExportHelper):
         for material in materials:
             # ノードを使用するかどうか
             x_material = XMaterial()
+            # マテリアル名はアルファベット英数字、アンダーバー、ハイフン
+            if re.fullmatch("[0-9A-z_-]*", material.name):
+                x_material.name = material.name
             if material.use_nodes:
                 texture = ""
 
@@ -954,6 +972,9 @@ class ExportDirectXXFile(bpy.types.Operator, ExportHelper):
                 for x_material in x_materials:
                     write_shorts(f, [TOKEN_NAME])
                     write_str(f, "Material")
+                    if self.export_material_name and x_material.name:
+                        write_shorts(f, [TOKEN_NAME])
+                        write_str(f, x_material.name)
                     write_shorts(f, [TOKEN_OBRACE])
                     color_list = [0.0] * 11
                     color_list[0:4] = x_material.face_color[0:4]
@@ -1082,7 +1103,10 @@ template TextureFilename {
             x_file_content = x_file_content[0:-2] + ";\n\n"
 
             for x_material in x_materials:
-                x_file_content += "  Material {\n"
+                if self.export_material_name and x_material.name:
+                    x_file_content += "  Material " + x_material.name + " {\n"
+                else:
+                    x_file_content += "  Material {\n"
                 x_file_content += "   " + \
                                   float_to_str(round(x_material.face_color[0], 6)) + ";" + \
                                   float_to_str(round(x_material.face_color[1], 6)) + ";" + \
@@ -1211,6 +1235,7 @@ def to_XElement(x_model_file_string, start_line_num):
     end_index = 0
     children = []
     skip = 0
+    element_name = ""
     for line_num in range(len(x_model_file_string))[start_line_num:]:
         if line_num <= skip:
             continue
@@ -1223,8 +1248,12 @@ def to_XElement(x_model_file_string, start_line_num):
             if element_type == "":
                 element_type = re.sub('\t', "", line[0:line.index("{")])
                 element_type = re.sub('^ *', "", element_type)
+                print(element_type.replace(" ", "a"))
                 if element_type.find(" ") != -1:
+                    element_name = element_type[element_type.find(" ") + 1:]
                     element_type = element_type[0:element_type.find(" ")]
+                    if re.search("[^ ]*", element_name):
+                        element_name = re.search("[^ ]*", element_name).group(0)
                 if element_type == "":
                     element_type = "empty"
             else:
@@ -1243,6 +1272,7 @@ def to_XElement(x_model_file_string, start_line_num):
     result.data = elem_data
     result.children = children
     result.end_line_num = end_index
+    result.name = element_name
     return result
 
 
@@ -1347,6 +1377,7 @@ class XElement:
     data = ""
     children = []
     end_line_num = 0
+    name = ""
 
 
 class XMaterial:
@@ -1355,6 +1386,7 @@ class XMaterial:
     specular_color = ()
     emission_color = ()
     texture_path = ""
+    name = ""
 
 
 class NumMatcher:
