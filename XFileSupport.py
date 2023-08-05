@@ -45,6 +45,7 @@ translations_dict = {
         ("*", "Text mode"): "テキストモード",
         ("*", "Binary mode"): "バイナリモード",
         ("*", "Export material name"): "マテリアル名を出力する",
+        ("*", "Export onyl selected objects"): "選択したオブジェクトのみエクスポート",
     }
 }
 
@@ -634,6 +635,11 @@ class ExportDirectXXFile(bpy.types.Operator, ExportHelper):
         default=True,
     )
 
+    export_selected_only: BoolProperty(
+        name="Export only selected objects",
+        default=False,
+    )
+
     def execute(self, context):
         if not self.filepath.endswith(".x"):
             return {'CANCELLED'}
@@ -655,7 +661,10 @@ class ExportDirectXXFile(bpy.types.Operator, ExportHelper):
         if self.mode == "binary":
             is_binary = True
 
-        for obj in bpy.context.scene.objects:
+        target_objects = bpy.context.scene.objects
+        if self.export_selected_only:
+            target_objects = bpy.context.selected_objects
+        for obj in target_objects:
             if obj.type == 'MESH' and not obj.hide_get():
                 # モディファイヤーを適用した状態のオブジェクトを取得
                 # obj_tmp = obj.copy()
