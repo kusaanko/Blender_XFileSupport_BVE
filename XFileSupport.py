@@ -9,11 +9,14 @@ import re
 import bpy
 from bpy.props import StringProperty, BoolProperty, FloatProperty, EnumProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
+from bpy.types import Panel, Operator
 import urllib.request
 import urllib.parse
 import json
 import webbrowser
 import struct
+import threading
+import functools
 
 bl_info = {
     "name": "Import/Export DirectX X File (.x) for Bve",
@@ -46,6 +49,8 @@ translations_dict = {
         ("*", "Binary mode"): "バイナリモード",
         ("*", "Export material name"): "マテリアル名を出力する",
         ("*", "Export onyl selected objects"): "選択したオブジェクトのみエクスポート",
+        ("*", "XFileSupport was updated to %s"): "XFileSupportは%sにアップデートされました。",
+        ("*", "Please restart Blender to apply this update."): "この更新を適用するには、Blenderを再起動してください。",
     }
 }
 
@@ -1180,16 +1185,32 @@ def menu_func_export(self, context):
         return
     self.layout.operator(ExportDirectXXFile.bl_idname, text="DirectX XFile (.x)")
 
+class UpdatedDialog(Operator):
+    bl_idname = "xfilesupport.updated"
+    bl_label = "XFileSupport Updated"
 
-def register():
-    bpy.utils.register_class(ImportDirectXXFile)
-    bpy.utils.register_class(ExportDirectXXFile)
+    version: bpy.props.StringProperty(name="Updated version")
 
-    bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
-    bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
+    def execute(self, context):
+        return {'FINISHED'}
+    
+    def invoke(self, context, event):
+        wm = context.window_manager
+        return wm.invoke_props_dialog(self)
+    
+    def draw(self, context):
+        layout = self.layout
+        col = layout.column()
+        col.label(text="XFileSupport was updated to " + self.version + ".")
+        col.label(text="Please restart blender to apply this update.")
 
-    bpy.app.translations.register(__name__, translations_dict)
+def invoke_updated_dialog(updated_version):
+    bpy.ops.xfilesupport.updated('INVOKE_DEFAULT', version=updated_version)
 
+def show_updated_dialog(version):
+    bpy.app.timers.register(functools.partial(invoke_updated_dialog, version), first_interval=.01)
+
+def check_update():
     try:
         req = urllib.request.Request(
             'https://raw.githubusercontent.com/kusaanko/Blender_XFileSupport_BVE/main/versions.json'
@@ -1202,7 +1223,22 @@ def register():
                         <= bpy.app.version:
                     if (versions['version_major'], versions['version_minor'], versions['version_subversion']) \
                             > bl_info['version']:
-                        html = """
+                        # Update available
+                        if "file_url" in versions and "file_name" in versions:
+                            req = urllib.request.Request(
+                                versions['file_url']
+                            )
+                            with urllib.request.urlopen(req) as response:
+                                body = response.read()
+                                os.remove(bpy.utils.user_resource('SCRIPTS', path="addons") + "\\" + os.path.basename(__file__))
+                                f = open(bpy.utils.user_resource('SCRIPTS', path="addons") + "\\" + versions['file_name'], 'bw')
+                                f.write(body)
+                                print("Updated XFileSupport to " + str(versions['version_major']) + "." + str(versions['version_minor']) + "." + str(versions['version_subversion']))
+                                print("  to " + bpy.utils.user_resource('SCRIPTS', path="addons") + "\\" + versions['file_name'])
+                                # Show updated dialog
+                                show_updated_dialog(str(versions['version_major']) + "." + str(versions['version_minor']) + "." + str(versions['version_subversion']))
+                        else:
+                            html = """
 <html>
 <head>
   <title>XFileSupport Update</title>
@@ -1217,11 +1253,24 @@ def register():
   <p><a href=""" + versions['download_link'] + ">" + bpy.app.translations.pgettext("Please download from this link.") + """</a></p>
 </body>
 </html>"""
-                        webbrowser.open_new_tab(
-                            "https://kusaanko.github.io/custom_page.html?" + urllib.parse.quote(html))
-                        break
-    except OSError:
-        pass
+                            webbrowser.open_new_tab(
+                                "https://kusaanko.github.io/custom_page.html?" + urllib.parse.quote(html))
+                            break
+    except OSError as e:
+        print(e)
+
+def register():
+    bpy.utils.register_class(ImportDirectXXFile)
+    bpy.utils.register_class(ExportDirectXXFile)
+    bpy.utils.register_class(UpdatedDialog)
+
+    bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
+    bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
+
+    thread = threading.Thread(target=check_update)
+    thread.start()
+
+    bpy.app.translations.register(__name__, translations_dict)
 
 
 def unregister():
@@ -1229,6 +1278,7 @@ def unregister():
 
     bpy.utils.unregister_class(ImportDirectXXFile)
     bpy.utils.unregister_class(ExportDirectXXFile)
+    bpy.utils.unregister_class(UpdatedDialog)
 
     bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
     bpy.types.TOPBAR_MT_file_export.remove(menu_func_export)
