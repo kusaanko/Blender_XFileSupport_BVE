@@ -1173,7 +1173,7 @@ template TextureFilename {
 
         return {'FINISHED'}
 
-
+# メニューに追加
 def menu_func_import(self, context):
     if bpy.context.mode != "OBJECT":
         return
@@ -1185,6 +1185,7 @@ def menu_func_export(self, context):
         return
     self.layout.operator(ExportDirectXXFile.bl_idname, text="DirectX XFile (.x)")
 
+# 更新完了ダイアログ
 class UpdatedDialog(Operator):
     bl_idname = "xfilesupport.updated"
     bl_label = "XFileSupport Updated"
@@ -1208,6 +1209,7 @@ def invoke_updated_dialog(updated_version):
     bpy.ops.xfilesupport.updated('INVOKE_DEFAULT', version=updated_version)
 
 def show_updated_dialog(version):
+    # プラグイン読み込み完了後に実行する必要があるため、タイマーを使用
     bpy.app.timers.register(functools.partial(invoke_updated_dialog, version), first_interval=.01)
 
 def check_update():
@@ -1219,12 +1221,14 @@ def check_update():
             body = response.read()
             json_data = json.loads(body)
             for versions in json_data:
+                # 現在のBlenderバージョンで動作するか確認
                 if (versions['blender_major'], versions['blender_minor'], versions['blender_subversion']) <= bpy.app.version and \
                     (versions['blender_max_major'], versions['blender_max_minor'], versions['blender_max_subversion']) >= bpy.app.version \
                         if all(x in versions for x in ['blender_max_major', 'blender_max_minor', 'blender_max_subversion']) else True:
+                    # 現在のバージョンより新しいか確認
                     if (versions['version_major'], versions['version_minor'], versions['version_subversion']) \
                             > bl_info['version']:
-                        # Update available
+                        # 更新がある
                         if "file_url" in versions and "file_name" in versions:
                             req = urllib.request.Request(
                                 versions['file_url']
@@ -1372,7 +1376,7 @@ def gen_fake_material():
     principled.inputs['Emission'].default_value = (0.0, 0.0, 0.0, 1.0)
     return material
 
-
+# expを使用しないstrにする
 def float_to_str(f):
     float_string = repr(f)
     if 'e' in float_string:  # detect scientific notation
@@ -1449,7 +1453,7 @@ class XMaterial:
     texture_path = ""
     name = ""
 
-
+# 正規表現では処理が遅いため、一文字ずつ探して次の数値の場所を取得
 class NumMatcher:
 
     def __init__(self, negative=True, decimal=True):
@@ -1500,7 +1504,7 @@ class NumMatcher:
     def group(self):
         return self.target_str[self.start:self.end]
 
-
+# Java風ByteBuffer
 class ByteBuffer:
 
     def __init__(self, data):
