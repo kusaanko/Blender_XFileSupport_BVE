@@ -1,6 +1,17 @@
 [
   {
     "version_major": 2,
+    "version_minor": 2,
+    "version_subversion": 0,
+    "blender_major": 2,
+    "blender_minor": 83,
+    "blender_subversion": 0,
+    "download_link": "https://github.com/kusaanko/Blender_XFileSupport_BVE/releases/latest",
+    "file_url": "https://github.com/kusaanko/Blender_XFileSupport_BVE/releases/download/v2.2.0/XFileSupport.py",
+    "file_name": "XFileSupport.py"
+  },
+  {
+    "version_major": 2,
     "version_minor": 1,
     "version_subversion": 0,
     "blender_major": 2,
