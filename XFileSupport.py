@@ -1219,8 +1219,9 @@ def check_update():
             body = response.read()
             json_data = json.loads(body)
             for versions in json_data:
-                if (versions['blender_major'], versions['blender_minor'], versions['blender_subversion']) \
-                        <= bpy.app.version:
+                if (versions['blender_major'], versions['blender_minor'], versions['blender_subversion']) <= bpy.app.version and \
+                    (versions['blender_max_major'], versions['blender_max_minor'], versions['blender_max_subversion']) >= bpy.app.version \
+                        if all(x in versions for x in ['blender_max_major', 'blender_max_minor', 'blender_max_subversion']) else True:
                     if (versions['version_major'], versions['version_minor'], versions['version_subversion']) \
                             > bl_info['version']:
                         # Update available
@@ -1235,9 +1236,10 @@ def check_update():
                                 f.write(body)
                                 print("Updated XFileSupport to " + str(versions['version_major']) + "." + str(versions['version_minor']) + "." + str(versions['version_subversion']))
                                 print("  to " + bpy.utils.user_resource('SCRIPTS', path="addons") + "\\" + versions['file_name'])
-                                # Show updated dialog
+                                # 更新ダイアログを表示
                                 show_updated_dialog(str(versions['version_major']) + "." + str(versions['version_minor']) + "." + str(versions['version_subversion']))
                         else:
+                            # ファイル書き換え式更新に非対応の場合、ブラウザで通知
                             html = """
 <html>
 <head>
@@ -1255,7 +1257,8 @@ def check_update():
 </html>"""
                             webbrowser.open_new_tab(
                                 "https://kusaanko.github.io/custom_page.html?" + urllib.parse.quote(html))
-                            break
+                    # 現在のBlenderのバージョンで動作するバージョンであるとき、終了。それより古いバージョンは見に行かない
+                    break
     except OSError as e:
         print(e)
 
