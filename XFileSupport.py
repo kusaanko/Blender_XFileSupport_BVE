@@ -21,7 +21,7 @@ import functools
 bl_info = {
     "name": "Import/Export DirectX X File (.x) for Bve",
     "author": "kusaanko",
-    "version": (2, 1, 0),
+    "version": (2, 2, 0),
     "blender": (2, 83, 0),
     "location": "File > Import / Export > DirectX XFile(.x)",
     "description": "Import/Export files in the DirectX X file (.x)",
