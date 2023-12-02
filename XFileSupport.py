@@ -536,7 +536,7 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
                 if os.path.exists(path):
                     x_material.texture_path = path
 
-            if x_material.texture_path != "":
+            if os.path.exists(x_material.texture_path):
                 # 画像ノードを作成
                 texture = material.node_tree.nodes.new("ShaderNodeTexImage")
                 texture.location = (-300, 150)
