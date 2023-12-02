@@ -22,7 +22,7 @@ bl_info = {
     "name": "Import/Export DirectX X File (.x) for Bve",
     "author": "kusaanko",
     "version": (2, 2, 0),
-    "blender": (2, 83, 0),
+    "blender": (4, 0, 0),
     "location": "File > Import / Export > DirectX XFile(.x)",
     "description": "Import/Export files in the DirectX X file (.x)",
     "warning": "This plug-in is for Bve. So some features are not supported.",
@@ -524,9 +524,10 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
             material.diffuse_color = color
 
             # 鏡面反射
-            principled.inputs['Specular'].default_value = 0.0
+            principled.inputs['Specular IOR Level'].default_value = x_material.specular_intensity
+            principled.inputs['Specular Tint'].default_value = x_material.specular_color
             # 放射を設定
-            principled.inputs['Emission'].default_value = x_material.emission_color
+            principled.inputs['Emission Color'].default_value = x_material.emission_color
 
             # テクスチャの紐付け
             if x_material.texture_path and x_material.texture_path != "":
@@ -767,11 +768,11 @@ class ExportDirectXXFile(bpy.types.Operator, ExportHelper):
                 else:
                     x_material.face_color = principled.inputs['Base Color'].default_value
                 # 鏡面反射
-                x_material.power = 0.0
-                x_material.specular_color = (0.0, 0.0, 0.0)
+                x_material.power = principled.inputs['Specular IOR Level'].default_value
+                x_material.specular_color = principled.inputs['Specular Tint'].default_value
 
                 # 放射色
-                x_material.emission_color = principled.inputs['Emission'].default_value
+                x_material.emission_color = principled.inputs['Emission Color'].default_value
 
                 if texture != "":
                     x_material.texture_path = texture
@@ -1370,10 +1371,11 @@ def gen_fake_material():
     principled.inputs['Base Color'].default_value = (1.0, 1.0, 1.0, 1.0)
 
     # スペキュラーを設定
-    principled.inputs['Specular'].default_value = 0.0
+    principled.inputs['Specular Tint'].default_value = (1.0, 1.0, 1.0, 1.0)
+    principled.inputs['Specular IOR Level'].default_value = 0.5
 
     # 放射を設定
-    principled.inputs['Emission'].default_value = (0.0, 0.0, 0.0, 1.0)
+    principled.inputs['Emission Color'].default_value = (0.0, 0.0, 0.0, 1.0)
     return material
 
 # expを使用しないstrにする
