@@ -1194,6 +1194,7 @@ class UpdatedDialog(Operator):
     version: bpy.props.StringProperty(name="Updated version")
 
     def execute(self, context):
+        webbrowser.open_new_tab('https://github.com/kusaanko/Blender_XFileSupport_BVE/releases')
         return {'FINISHED'}
     
     def invoke(self, context, event):
