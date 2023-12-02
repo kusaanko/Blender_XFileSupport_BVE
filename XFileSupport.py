@@ -524,8 +524,8 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
             material.diffuse_color = color
 
             # 鏡面反射
-            principled.inputs['Specular IOR Level'].default_value = x_material.specular_intensity
-            principled.inputs['Specular Tint'].default_value = x_material.specular_color
+            principled.inputs['Specular IOR Level'].default_value = x_material.power
+            principled.inputs['Specular Tint'].default_value = (*x_material.specular_color, 1.0)
             # 放射を設定
             principled.inputs['Emission Color'].default_value = x_material.emission_color
 
