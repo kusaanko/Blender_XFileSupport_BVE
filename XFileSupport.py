@@ -427,6 +427,7 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
             header = f.read(16)
             if header[0:4] == b'xof ':
                 # フォーマットのチェック
+                self.is_compressed = False
                 if header[8:12] == b'txt ':
                     self.is_binary = False
                 elif header[8:12] == b'bin ':
