@@ -436,6 +436,7 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
                 elif header[8:12] == b'bzip':
                     self.is_binary = True
                     self.is_compressed = True
+                self.float_size = int(header[12:16].decode())
             else:
                 raise Exception(bpy.app.translations.pgettext("This file is not X file!"))
 
