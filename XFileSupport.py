@@ -461,7 +461,7 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
                         offset = compressed_byte_buffer.get_short()
                         magic = compressed_byte_buffer.get_short()
                         compressed_data = compressed_byte_buffer.get(offset - 2)
-                        self.byte_buffer.append(zlib.decompress(compressed_data, -8))
+                        self.byte_buffer.append(zlib.decompress(compressed_data, -8, MSZIP_BLOCK))
             else:
                 with open(self.filepath, "rb") as f:
                     f.read(16)
