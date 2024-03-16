@@ -439,28 +439,24 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
             # バイナリ
             if self.is_compressed:
                 with open(self.filepath, "rb") as f:
-                    f.read(22)
+                    f.read(16)
                     raw_data = f.read()
                     compressed_byte_buffer = ByteBuffer(raw_data)
                     MSZIP_BLOCK = 0xffff
                     MSZIP_MAGIC = int.from_bytes("CK".encode(), byteorder='little')
-                    expected = 0
+
+                    unzipped_size = compressed_byte_buffer.get_int()
+
+                    self.byte_buffer = ByteBuffer(bytes())
                     while compressed_byte_buffer.has_remaining():
-                        offset = compressed_byte_buffer.get_short()
+                        uncompressed_size = compressed_byte_buffer.get_short()
+                        block_size = compressed_byte_buffer.get_short()
                         magic = compressed_byte_buffer.get_short()
-                        if offset > MSZIP_BLOCK:
+                        if block_size > MSZIP_BLOCK:
                             raise Exception(bpy.app.translations.pgettext("Unexpected compressed block size!"))
                         if magic != MSZIP_MAGIC:
                             raise Exception(bpy.app.translations.pgettext("Unexpected compressed block magic!"))
-                        expected += MSZIP_BLOCK
-                        compressed_byte_buffer.skip(offset - 2)
-                    
-                    compressed_byte_buffer.pos = 0
-                    self.byte_buffer = ByteBuffer(bytes())
-                    while compressed_byte_buffer.has_remaining():
-                        offset = compressed_byte_buffer.get_short()
-                        magic = compressed_byte_buffer.get_short()
-                        compressed_data = compressed_byte_buffer.get(offset - 2)
+                        compressed_data = compressed_byte_buffer.get(block_size - 2)
                         self.byte_buffer.append(zlib.decompress(compressed_data, -8, MSZIP_BLOCK))
             else:
                 with open(self.filepath, "rb") as f:
