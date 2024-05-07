@@ -6,6 +6,7 @@
 
 import os
 import re
+from typing import List, Self
 import bpy
 from bpy.props import StringProperty, BoolProperty, FloatProperty, EnumProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
@@ -18,6 +19,7 @@ import struct
 import threading
 import functools
 import zlib
+import mathutils
 
 bl_info = {
     "name": "Import/Export DirectX X File (.x) for Bve",
@@ -91,6 +93,21 @@ TOKEN_UNICODE = 0x32
 TOKEN_CSTRING = 0x33
 TOKEN_ARRAY = 0x34
 
+class XModelMesh:
+    vertices = []
+    faces = []
+    tex_coords = []
+    normals = []
+    normal_faces = []
+    materials = []
+    material_face_indexes = []
+    material_count = 0
+
+class XModelNode:
+    node_name = ""
+    transform_matrix: mathutils.Matrix = mathutils.Matrix.Identity(4)
+    mesh: XModelMesh = None
+    children: List[Self] = []
 
 class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
     bl_idname = "import_model.directx_x"
@@ -141,131 +158,227 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
         self.ret_float_list = []
         self.ret_uuid = ""
         self.byte_buffer = ByteBuffer(bytes())
-
-    def parse_mesh(self, element):
-        data = element.data
-        size = int(data[0:data.find(";")].replace(" ", ""))
-        num_matcher = NumMatcher(True, True)
-        data = data[data.find(";") + 1:]
-        num_matcher.set_target(data)
-        vertex = [0.0, 0.0, 0.0]
-        i = 0
+        self.text_content = ""
+        self.text_pos = 0
+        self.text_brace_count = 0
+    
+    def from_mesh(self, mesh: XModelMesh):
+        vertex_index = 0
         self.mesh_vertexes = []
         self.mesh_vertexes_redirect = {}
-        vertex_index = 0
-        while num_matcher.find():
-            vertex[i] = float(num_matcher.group())
-            i += 1
-            if i == 3:
-                i = 0
-                # DirectX X Y Z
-                # Blender X Z Y
-                vector = (vertex[0] * self.scale, vertex[2] * self.scale, vertex[1] * self.scale)
-                # 重複した座標は1つにまとめる
-                # リダイレクト先を登録しておく
-                if vector in self.mesh_vertexes:
-                    self.mesh_vertexes_redirect[vertex_index] = self.mesh_vertexes.index(vector)
-                else:
-                    self.mesh_vertexes_redirect[vertex_index] = len(self.mesh_vertexes)
-                    self.mesh_vertexes.append(vector)
-                vertex_index += 1
-                if vertex_index == size:
-                    break
-        data = data[num_matcher.get_end() + 1:]
+        for vertex in mesh.vertices:
+            # DirectX X Y Z
+            # Blender X Z Y
+            vector = (vertex[0] * self.scale, vertex[2] * self.scale, vertex[1] * self.scale)
+            # 重複した座標は1つにまとめる
+            # リダイレクト先を登録しておく
+            if vector in self.mesh_vertexes:
+                self.mesh_vertexes_redirect[vertex_index] = self.mesh_vertexes.index(vector)
+            else:
+                self.mesh_vertexes_redirect[vertex_index] = len(self.mesh_vertexes)
+                self.mesh_vertexes.append(vector)
+            vertex_index += 1
+            if vertex_index == len(mesh.vertices):
+                break
         indexes_size = 0
-        size = 0
-        positive_num_matcher = NumMatcher(False, True)
-        positive_num_matcher.set_target(data)
-        indexes = []
-        i = -2
         self.mesh_faces = []
         self.vertexes = []
         self.mesh_faces_exact = []
-        while positive_num_matcher.find():
-            if i == -2:
-                indexes_size = int(positive_num_matcher.group())
-            elif i == -1:
-                size = int(positive_num_matcher.group())
-                indexes = [0] * size
-            else:
-                indexes[i] = int(positive_num_matcher.group())
-            i += 1
-            if i == size:
-                i = -1
-                # Blenderに記録する際に使用する頂点のインデックス
-                indexes.reverse()
-                vertexes = []
-                for l in range(len(indexes)):
-                    if indexes[l] in self.mesh_vertexes_redirect:
-                        vertexes.append(self.mesh_vertexes_redirect[indexes[l]])
-                    else:
-                        vertexes.append(indexes[l])
-                self.mesh_faces.append(vertexes)
-                # Xファイルに記述された実際の使用する頂点のインデックス(UV登録時に使用)
-                self.mesh_faces_exact.append(indexes)
-                if len(self.mesh_faces) == indexes_size:
-                    break
+        for indexes in mesh.faces:
+            vertex_size = self.get_next_int_text()
+            indexes = []
+            for j in range(vertex_size):
+                indexes.append(self.get_next_int_text())
+            # Blenderに記録する際に使用する頂点のインデックス
+            indexes.reverse()
+            vertexes = []
+            for l in range(len(indexes)):
+                if indexes[l] in self.mesh_vertexes_redirect:
+                    vertexes.append(self.mesh_vertexes_redirect[indexes[l]])
+                else:
+                    vertexes.append(indexes[l])
+            self.mesh_faces.append(vertexes)
+            # Xファイルに記述された実際の使用する頂点のインデックス(UV登録時に使用)
+            self.mesh_faces_exact.append(indexes)
+            if len(self.mesh_faces) == indexes_size:
+                break
 
-    def parse_texture_coords(self, element):
-        data = element.data
-        num_matcher = NumMatcher(True, True)
-        num_matcher.set_target(data)
-        num_matcher.find()
-        size = int(num_matcher.group())
-        vertex = [0.0, 0.0]
-        i = 0
-        while num_matcher.find():
-            vertex[i] = float(num_matcher.group())
-            i += 1
-            if i == 2:
-                i = 0
-                vertex[1] = -vertex[1] + 1
-                self.mesh_tex_coord.append(vertex)
-                vertex = [0.0, 0.0]
-                if len(self.mesh_tex_coord) == size:
-                    break
+        for vertex in mesh.tex_coords:
+            vertex[1] = -vertex[1] + 1
+            self.mesh_tex_coord.append(vertex)
+            
+        for index in mesh.material_face_indexes:
+            self.material_face_indexes.append(index)
+        
+        for material in mesh.materials:
+            self.materials.append(material)
 
-    def parse_mesh_material_list(self, element):
-        data = element.data.replace(" ", "")
-        num_matcher = NumMatcher(False, True)
-        num_matcher.set_target(data)
-        num_matcher.find()
-        self.material_count = int(num_matcher.group())
-        num_matcher.find()
-        size = int(num_matcher.group())
-        while num_matcher.find():
-            self.material_face_indexes.append(int(num_matcher.group()))
+    def parse_mesh_text(self, mesh: XModelMesh):
+        object_name = self.get_object_name_text()
+        vertex_size = self.get_next_int_text()
+        for _ in range(vertex_size):
+            vertex = [self.get_next_float_text(), self.get_next_float_text(), self.get_next_float_text()]
+            mesh.vertices.append(vertex)
+        faces_size = self.get_next_int_text()
+        for i in range(faces_size):
+            vertex_size = self.get_next_int_text()
+            indexes = []
+            for _ in range(vertex_size):
+                indexes.append(self.get_next_int_text())
+            mesh.faces.append(indexes)
+        
+        brace_count = self.text_brace_count
+        
+        token = self.get_next_token_text()
+        while token != None and self.text_brace_count >= brace_count:
+            if brace_count == self.text_brace_count:
+                if token == "MeshNormals":
+                    self.parse_mesh_normals_text()
+                elif token == "MeshMaterialList":
+                    self.parse_mesh_material_list_text()
+                elif token == "MeshTextureCoords":
+                    self.parse_mesh_texture_coords_text()
+            token = self.get_next_token_text()
 
-    def parse_material(self, element):
-        color = element.data[0:element.data.find(";;")].replace(" ", "").split(";")
-        d = element.data[element.data.find(";;") + 2:]
-        power = float(d[0:d.find(";")])
-        d = d[d.find(";") + 1:]
-        specular_color = d[0:d.find(";;")].split(";")
-        d = d[d.find(";;") + 2:]
-        emission_color = d[0:d.find(";;")].split(";")
+    def parse_texture_coords_text(self, mesh: XModelMesh):
+        object_name = self.get_object_name_text()
+        vertex_size = self.get_next_int_text()
+        for _ in range(vertex_size):
+            uv = [self.get_next_float_text(), self.get_next_float_text()]
+            mesh.tex_coords.append(uv)
+
+    def parse_mesh_material_list_text(self, mesh: XModelMesh):
+        object_name = self.get_object_name_text()
+        mesh.material_count = self.get_next_int_text()
+        face_count = self.get_next_int_text()
+        for _ in range(face_count):
+            mesh.material_face_indexes.append(self.get_next_int_text())
+        
+        brace_count = self.text_brace_count
+        token = self.get_next_token_text()
+        while token != None and self.text_brace_count >= brace_count:
+            if brace_count == self.text_brace_count:
+                if token == "Material":
+                    self.parse_material_text(mesh)
+
+    def parse_material_text(self, mesh: XModelMesh):
+        object_name = self.get_object_name_text()
+        color = [self.get_next_float_text(), self.get_next_float_text(), self.get_next_float_text(), self.get_next_float_text()]
+        power = self.get_next_float_text()
+        specular_color = [self.get_next_float_text(), self.get_next_float_text(), self.get_next_float_text()]
+        self.skip_next_token_text(";")
+        emissive_color = [self.get_next_float_text(), self.get_next_float_text(), self.get_next_float_text()]
         face_color = [1.0, 1.0, 1.0, 1.0]
         for i in range(len(color)):
             face_color[i] = float(color[i])
         material = XMaterial()
         material.face_color = face_color
         material.power = power
-        material.specular_color = (
-            float(specular_color[0]),
-            float(specular_color[1]),
-            float(specular_color[2])
-        )
-        material.emission_color = (
-            float(emission_color[0]),
-            float(emission_color[1]),
-            float(emission_color[2]),
-            1.0
-        )
-        material.name = element.name
-        for tex in element.children:
-            if tex.element_type == "TextureFilename":
-                material.texture_path = tex.data[tex.data.find("\"") + 1:tex.data.rfind("\"")]
-        self.materials.append(material)
+        material.specular_color = tuple(specular_color)
+        material.emission_color = tuple(emissive_color) + (1.0,)
+        material.name = object_name
+
+        brace_count = self.text_brace_count
+        token = self.get_next_token_text()
+        while token != None and self.text_brace_count >= brace_count:
+            if brace_count == self.text_brace_count:
+                if token == "TextureFilename":
+                    material.texture_path = self.get_next_string_text()
+                    self.skip_next_token_text(";")
+            token = self.get_next_token_text()
+        mesh.materials.append(material)
+    
+    def get_next_token_text(self):
+        start = False
+        ret = ""
+        while self.text_pos < len(self.text_content):
+            # comment
+            if len(self.text_content) + 1 < self.text_pos and self.text_content[self.text_pos] == '/' and self.text_content[self.text_content + 1] == '/' or \
+                    self.text_content[self.text_pos] == '#':
+                while self.text_pos < len(self.text_content):
+                    if self.text_content[self.text_pos] == '\n' or self.text_content[self.text_pos] == '\r':
+                        break
+                    self.text_pos += 1
+            if self.is_ascii(self.text_content[self.text_pos]):
+                start = True
+                c = self.text_content[self.text_pos]
+                if c == "{" or c == "}" or c == "[" or c == "]" or  c == ";" or c == "," or c == '"':
+                    if len(ret) == 0:
+                        if c == "{":
+                            self.text_brace_count += 1
+                        elif c == "}":
+                            self.text_brace_count -= 1
+                        ret += c
+                        self.text_pos += 1
+                    return ret
+                ret += c
+            elif start:
+                break
+
+            self.text_pos += 1
+        
+        if len(ret) == 0:
+            return None
+        
+        return ret
+
+    def skip_until_text(self, target):
+        token = ""
+        while True:
+            token = self.get_next_token_text()
+            if token == target:
+                break
+    
+    def skip_next_token_text(self, expected):
+        token = self.get_next_token_text()
+        if token != expected:
+            raise Exception(f"Unexpected token: {token}")
+        
+    def get_next_int_text(self):
+        token = self.get_next_token_text()
+        while token == ";" or token == ",":
+            token = self.get_next_token_text()
+        
+        if token == None:
+            raise Exception("Unexpected end of file")
+        
+        return int(token)
+        
+    def get_next_float_text(self):
+        token = self.get_next_token_text()
+        while token == ";" or token == ",":
+            token = self.get_next_token_text()
+        
+        if token == None:
+            raise Exception("Unexpected end of file")
+        
+        return float(token)
+
+    def get_next_string_text(self):
+        self.skip_until_text('"')
+        ret = ""
+        while self.text_pos < len(self.text_content):
+            if self.text_content[self.text_pos] == '\\':
+                self.text_pos += 1
+            elif self.text_content[self.text_pos] == '"':
+                self.text_pos += 1
+                break
+            else:
+                ret += self.text_content[self.text_pos]
+            self.text_pos += 1
+        if len(ret) == 0:
+            return None
+        return ret
+
+    def get_object_name_text(self):
+        token = self.get_next_token_text()
+        if token == "{":
+            return None
+        self.skip_next_token_text("{")
+        return token
+
+    def is_ascii(self, c):
+        return ord(c) <= 255 and ord(c) != ord(' ') and ord(c) != ord('\r') and ord(c) != ord('\n') and ord(c) != ord('\t')
 
     def parse_token(self):
         token = self.byte_buffer.get_short()
@@ -472,37 +585,21 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
         else:
             # テキスト
             with open(self.filepath) as f:
-                x_model_file_string = f.read().split("\n")
-                x_elements = []
-                x_element = XElement()
+                x_model_file_string = f.read()
+                self.text_content = x_model_file_string
 
-                # テキストデータからXElementにパース
-                for line in range(len(x_model_file_string)):
-                    if line <= x_element.end_line_num:
-                        continue
-                    x_element = to_XElement(x_model_file_string, line)
-                    x_elements.append(x_element)
+                root_node = XModelNode()
 
-                # XElementからデータを分析
-                for element in x_elements:
-                    if element.element_type == "Mesh":
-                        self.parse_mesh(element)
-
-                        for ele in element.children:
-                            # テクスチャの座標(UV)
-                            if ele.element_type == "MeshTextureCoords":
-                                self.parse_texture_coords(ele)
-                            # マテリアルのリスト マテリアル数;\n面の数;\nその面が使用するマテリアルのインデックス,...
-                            if ele.element_type == "MeshMaterialList":
-                                self.parse_mesh_material_list(ele)
-                                for ch in ele.children:
-                                    if ch.element_type == "Material":
-                                        self.parse_material(ch)
-                    else:
-                        if element.element_type == "Material":
-                            self.parse_material(element)
-                        elif element.element_type == "MeshTextureCoords":
-                            self.parse_texture_coords(element)
+                token = self.get_next_token_text()
+                while token != None:
+                    if self.text_brace_count == 0:
+                        if token == "template":
+                            self.get_next_token_text()
+                        elif token == "Mesh":
+                            self.parse_mesh_text(root_node.mesh)
+                        elif token == "Material":
+                            self.parse_material_text(root_node.mesh)
+                self.from_mesh(root_node.mesh)
         material_faces = []
         for i in range(self.material_count):
             material_faces.append([])
@@ -1508,57 +1605,6 @@ class XMaterial:
     emission_color = ()
     texture_path = ""
     name = ""
-
-# 正規表現では処理が遅いため、一文字ずつ探して次の数値の場所を取得
-class NumMatcher:
-
-    def __init__(self, negative=True, decimal=True):
-        self.negative = negative
-        self.decimal = decimal
-        self.target = []
-        self.target_str = ""
-        self.pos = 0
-        self.start = 0
-        self.end = 0
-
-    def set_target(self, target):
-        self.target = list(target)
-        self.target_str = target
-        self.pos = 0
-
-    def find(self):
-        start_num = False
-        negative = False
-        while self.pos < len(self.target):
-            c = self.target[self.pos]
-            if start_num:
-                if not ((self.decimal and c == '.') or ('0' <= c <= '9')):
-                    self.end = self.pos
-                    if negative and self.end - self.start == 1:
-                        start_num = False
-                        negative = False
-                    else:
-                        return True
-            else:
-                if self.negative:
-                    if c == '-':
-                        start_num = True
-                        negative = True
-                        self.start = self.pos
-                if '0' <= c <= '9':
-                    start_num = True
-                    self.start = self.pos
-            self.pos += 1
-        return False
-
-    def get_start(self):
-        return self.start
-
-    def get_end(self):
-        return self.end
-
-    def group(self):
-        return self.target_str[self.start:self.end]
 
 # Java風ByteBuffer
 class ByteBuffer:
