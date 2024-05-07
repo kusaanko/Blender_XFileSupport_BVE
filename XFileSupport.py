@@ -106,7 +106,7 @@ class XModelMesh:
 class XModelNode:
     node_name = ""
     transform_matrix: mathutils.Matrix = mathutils.Matrix.Identity(4)
-    mesh: XModelMesh = None
+    mesh: XModelMesh = XModelMesh()
     children: List[Self] = []
 
 class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
@@ -248,10 +248,6 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
         mesh_material_face_indexes = []
         mesh_materials: List[XMaterial] = []
         for indexes in mesh.faces:
-            vertex_size = self.get_next_int_text()
-            indexes = []
-            for j in range(vertex_size):
-                indexes.append(self.get_next_int_text())
             # Blenderに記録する際に使用する頂点のインデックス
             indexes.reverse()
             vertexes = []
@@ -289,7 +285,7 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
                 material_faces[material_id].append(i)
 
         # モデル名を決定
-        model_name = (node.node_name if node.node_name is not None and len(node.node_name) != 0 else os.path.splitext(os.path.basename(self.filepath))[0]) + self.object_index
+        model_name = (node.node_name if node.node_name is not None and len(node.node_name) != 0 else os.path.splitext(os.path.basename(self.filepath))[0]) + str(self.object_index)
         self.object_index += 1
 
         # マテリアルごとにオブジェクトを作成
@@ -423,12 +419,10 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
         token = self.get_next_token_text()
         while token != None and self.text_brace_count >= brace_count:
             if brace_count == self.text_brace_count:
-                if token == "MeshNormals":
-                    self.parse_mesh_normals_text()
-                elif token == "MeshMaterialList":
-                    self.parse_mesh_material_list_text()
+                if token == "MeshMaterialList":
+                    self.parse_mesh_material_list_text(mesh)
                 elif token == "MeshTextureCoords":
-                    self.parse_mesh_texture_coords_text()
+                    self.parse_mesh_texture_coords_text(mesh)
             token = self.get_next_token_text()
 
     def parse_mesh_texture_coords_text(self, mesh: XModelMesh):
@@ -451,6 +445,7 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
             if brace_count == self.text_brace_count:
                 if token == "Material":
                     self.parse_material_text(mesh)
+            token = self.get_next_token_text()
 
     def parse_material_text(self, mesh: XModelMesh):
         object_name = self.get_object_name_text()
@@ -503,6 +498,7 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
                     c = XModelNode()
                     self.parse_frame_text(c)
                     node.children.append(c)
+            token = self.get_next_token_text()
         node.children.append(child)
     
     def get_next_token_text(self):
@@ -843,8 +839,9 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
                             self.parse_material_text(root_node.mesh)
                         elif token == "Frame":
                             self.parse_frame_text(root_node)
-                            
-        self.create_obj_from_node(root_node)
+                    token = self.get_next_token_text()
+
+        self.create_obj_from_node(mathutils.Matrix.Identity(4), root_node)
 
         return {'FINISHED'}
 
