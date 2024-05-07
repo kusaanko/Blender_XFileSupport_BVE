@@ -173,7 +173,7 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
             vector = (vertex[0] * self.scale, vertex[2] * self.scale, vertex[1] * self.scale)
             # 重複した座標は1つにまとめる
             # リダイレクト先を登録しておく
-            if vector in self.mesh_vertexes:
+            if vector in mesh_vertexes:
                 mesh_vertexes_redirect[vertex_index] = mesh_vertexes.index(vector)
             else:
                 mesh_vertexes_redirect[vertex_index] = len(mesh_vertexes)
