@@ -140,15 +140,6 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
     )
 
     def __init__(self):
-        self.mesh_vertexes = []
-        self.mesh_faces = []
-        self.mesh_vertexes_redirect = {}
-        self.vertexes = []
-        self.mesh_faces_exact = []
-        self.mesh_tex_coord = []
-        self.material_face_indexes = []
-        self.material_count = 0
-        self.materials = []
         self.is_binary = False
         self.float_size = 32
         self.ret_string = ""
@@ -163,57 +154,6 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
         self.text_brace_count = 0
         self.bin_brace_count = 0
         self.object_index = 0
-    
-    def from_mesh(self, mesh: XModelMesh):
-        vertex_index = 0
-        self.mesh_vertexes = []
-        self.mesh_vertexes_redirect = {}
-        for vertex in mesh.vertices:
-            # DirectX X Y Z
-            # Blender X Z Y
-            vector = (vertex[0] * self.scale, vertex[2] * self.scale, vertex[1] * self.scale)
-            # 重複した座標は1つにまとめる
-            # リダイレクト先を登録しておく
-            if vector in self.mesh_vertexes:
-                self.mesh_vertexes_redirect[vertex_index] = self.mesh_vertexes.index(vector)
-            else:
-                self.mesh_vertexes_redirect[vertex_index] = len(self.mesh_vertexes)
-                self.mesh_vertexes.append(vector)
-            vertex_index += 1
-            if vertex_index == len(mesh.vertices):
-                break
-        indexes_size = 0
-        self.mesh_faces = []
-        self.vertexes = []
-        self.mesh_faces_exact = []
-        for indexes in mesh.faces:
-            vertex_size = self.get_next_int_text()
-            indexes = []
-            for j in range(vertex_size):
-                indexes.append(self.get_next_int_text())
-            # Blenderに記録する際に使用する頂点のインデックス
-            indexes.reverse()
-            vertexes = []
-            for l in range(len(indexes)):
-                if indexes[l] in self.mesh_vertexes_redirect:
-                    vertexes.append(self.mesh_vertexes_redirect[indexes[l]])
-                else:
-                    vertexes.append(indexes[l])
-            self.mesh_faces.append(vertexes)
-            # Xファイルに記述された実際の使用する頂点のインデックス(UV登録時に使用)
-            self.mesh_faces_exact.append(indexes)
-            if len(self.mesh_faces) == indexes_size:
-                break
-
-        for vertex in mesh.tex_coords:
-            vertex[1] = -vertex[1] + 1
-            self.mesh_tex_coord.append(vertex)
-            
-        for index in mesh.material_face_indexes:
-            self.material_face_indexes.append(index)
-        
-        for material in mesh.materials:
-            self.materials.append(material)
     
     def create_obj_from_node(self, matrix: mathutils.Matrix, node: XModelNode):
         if matrix is None:
@@ -688,11 +628,9 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
     def parse_mesh_texture_coords_bin(self, mesh: XModelMesh):
         self.parse_token_loop(TOKEN_INTEGER_LIST)
         self.parse_token_loop(TOKEN_FLOAT_LIST)
-        mesh.tex_coords = []
         i = 0
         while i < len(self.ret_float_list):
             vertex = [self.ret_float_list[i], self.ret_float_list[i + 1]]
-            vertex[1] = -vertex[1] + 1
             mesh.tex_coords.append(vertex)
             i += 2
 
