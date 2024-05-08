@@ -60,6 +60,7 @@ translations_dict = {
         ("*", "Gamma correction is not 2.2"): "ガンマ補正は2.2である必要があります",
         ("*", "XFileSupport was updated to %s"): "XFileSupportは%sにアップデートされました。",
         ("*", "Please restart Blender to apply this update."): "この更新を適用するには、Blenderを再起動してください。",
+        ("*", "This plug-in is for Bve. So some features are not supported."): "このプラグインはBve向けです。そのため、一部の機能はサポートされていません。",
     }
 }
 
