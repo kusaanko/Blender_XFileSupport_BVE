@@ -230,7 +230,7 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
         
         for material in mesh.materials:
             mesh_materials.append(material)
-        material_faces = []
+        material_faces: List[List[int]] = []
         material_count = mesh.material_count
         for i in range(material_count):
             material_faces.append([])
@@ -616,13 +616,7 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
         i = 0
         vertex_index = 0
         while vertex_index < self.ret_integer_list[0]:
-            # DirectX X Y Z
-            # Blender X Z Y
-            vertex = (
-                self.ret_float_list[i] * self.scale,
-                self.ret_float_list[i + 2] * self.scale,
-                self.ret_float_list[i + 1] * self.scale
-            )
+            vertex = self.ret_float_list[i:i + 3]
             mesh.vertices.append(vertex)
             vertex_index += 1
             i += 3
@@ -637,12 +631,13 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
         
         brace_count = self.bin_brace_count
         token = self.parse_token()
-        while brace_count != self.bin_brace_count:
-            if token == TOKEN_NAME:
+        while brace_count <= self.bin_brace_count:
+            if brace_count == self.bin_brace_count and token == TOKEN_NAME:
                 if self.ret_string == "MeshTextureCoords":
                     self.parse_mesh_texture_coords_bin(mesh)
                 elif self.ret_string == "MeshMaterialList":
                     self.parse_mesh_material_list_bin(mesh)
+            token = self.parse_token()
 
     def parse_mesh_texture_coords_bin(self, mesh: XModelMesh):
         self.parse_token_loop(TOKEN_INTEGER_LIST)
@@ -656,13 +651,12 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
     def parse_mesh_material_list_bin(self, mesh: XModelMesh):
         self.parse_token_loop(TOKEN_INTEGER_LIST)
         mesh.material_count = self.ret_integer_list[0]
-        i = 2
         mesh.material_face_indexes = self.ret_integer_list[2:self.ret_integer_list[1] + 2]
         pos = self.byte_buffer.pos
         while True:
             token = self.parse_token()
             if token == TOKEN_NAME and self.ret_string == "Material":
-                self.parse_material_bin()
+                self.parse_material_bin(mesh)
             else:
                 self.byte_buffer.pos = pos
                 break
@@ -698,8 +692,8 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
         child.node_name = name
         brace_count = self.bin_brace_count
         token = self.parse_token()
-        while brace_count >= self.bin_brace_count:
-            if token == TOKEN_NAME:
+        while brace_count<= self.bin_brace_count:
+            if brace_count == self.bin_brace_count and token == TOKEN_NAME:
                 if self.ret_string == "FrameTransformMatrix":
                     matrix = [
                         self.ret_float_list[0:4],
