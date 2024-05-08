@@ -906,7 +906,7 @@ class ExportDirectXXFile(bpy.types.Operator, ExportHelper):
                 mesh = mesh.copy()
                 # オブジェクトモードでの操作を適用した状態のメッシュを取得
                 mesh.transform(obj.matrix_world)
-                uv_vertexes = mesh.uv_layers[0].data
+                uv_vertexes = mesh.uv_layers.active.data
                 vertex_index = 0
                 for polygon in mesh.polygons:
                     ver = []
