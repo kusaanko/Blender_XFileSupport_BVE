@@ -4,6 +4,7 @@
 # This is licensed under the Apache License 2.0
 # see https://github.com/kusaanko/Blender_XFileSupport_BVE/blob/main/LICENSE
 
+import math
 import os
 import re
 from typing import List, Self
@@ -41,6 +42,7 @@ __version__ = "3.2.0"
 translations_dict = {
     "ja_JP": {
         ("*", "Remove All Objects and Materials"): "全てのオブジェクトとマテリアルを削除する",
+        ("*", "Gamma correction"): "ガンマ補正",
         ("*", "The update of XFileSupport is available!"): "XFileSupportの更新が利用可能です！",
         ("*", "Your version:"): "現在のバージョン:",
         ("*", "New version:"): "新しいバージョン:",
@@ -55,6 +57,7 @@ translations_dict = {
         ("*", "Export material name"): "マテリアル名を出力する",
         ("*", "Export onyl selected objects"): "選択したオブジェクトのみエクスポート",
         ("*", "Export only necessary data"): "必要なデータのみエクスポート",
+        ("*", "Gamma correction is not 2.2"): "ガンマ補正は2.2である必要があります",
         ("*", "XFileSupport was updated to %s"): "XFileSupportは%sにアップデートされました。",
         ("*", "Please restart Blender to apply this update."): "この更新を適用するには、Blenderを再起動してください。",
     }
@@ -153,6 +156,11 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
     scale: FloatProperty(
         name="Scale",
         default=1.0
+    )
+
+    gamma_correction: BoolProperty(
+        name="Gamma correction",
+        default=True,
     )
 
     def __init__(self):
@@ -308,6 +316,15 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
                 material.node_tree.links.new(principled.inputs['Base Color'], texture.outputs['Color'])
                 # アルファとテクスチャのアルファをリンクさせる
                 material.node_tree.links.new(principled.inputs['Alpha'], texture.outputs['Alpha'])
+            elif self.gamma_correction:
+                # ガンマノードを作成
+                gamma_node = material.node_tree.nodes.new("ShaderNodeGamma")
+                gamma_node.location = (-250, 250)
+
+                gamma_node.inputs['Color'].default_value = color
+                gamma_node.inputs['Gamma'].default_value = 2.2
+                # ベースカラーとガンマのカラーをリンクさせる
+                material.node_tree.links.new(principled.inputs['Base Color'], gamma_node.outputs['Color'])
 
             # 頂点データと面データを作成
             # マテリアルが使う頂点だけを抽出、その頂点のインデックスに合わせて面の頂点のインデックスを変更
@@ -848,6 +865,11 @@ class ExportDirectXXFile(bpy.types.Operator, ExportHelper):
         default=True,
     )
 
+    gamma_correction: BoolProperty(
+        name="Gamma correction",
+        default=True,
+    )
+
     def execute(self, context):
         if not self.filepath.endswith(".x"):
             return {'CANCELLED'}
@@ -966,11 +988,28 @@ class ExportDirectXXFile(bpy.types.Operator, ExportHelper):
                             need_color = False
                             for out in link.from_node.outputs:
                                 if out.type == 'RGBA':
-                                    x_material.face_color = out.default_value
+                                    x_material.face_color = [out.default_value[0], out.default_value[1], out.default_value[2], principled.inputs['Alpha'].default_value]
+                                    if self.gamma_correction:
+                                        x_material.face_color[0] = math.pow(x_material.face_color[0], 1/2.2)
+                                        x_material.face_color[1] = math.pow(x_material.face_color[1], 1/2.2)
+                                        x_material.face_color[2] = math.pow(x_material.face_color[2], 1/2.2)
+                        if link.from_node.type == "GAMMA":
+                            for input in link.from_node.inputs:
+                                if input.identifier == 'Gamma':
+                                    if round(input.default_value * 100) != 220:
+                                        raise Exception(bpy.app.translations.pgettext("Gamma correction is not 2.2"))
+                                if input.identifier == 'Color':
+                                    need_color = False
+                                    x_material.face_color = (input.default_value[0], input.default_value[1], input.default_value[2], principled.inputs['Alpha'].default_value)
                     if need_color:
                         x_material.face_color = (1.0, 1.0, 1.0, 1.0)
                 else:
-                    x_material.face_color = principled.inputs['Base Color'].default_value
+                    col = principled.inputs['Base Color'].default_value
+                    x_material.face_color = [col[0], col[1], col[2], principled.inputs['Alpha'].default_value]
+                    if self.gamma_correction:
+                        x_material.face_color[0] = math.pow(x_material.face_color[0], 1/2.2)
+                        x_material.face_color[1] = math.pow(x_material.face_color[1], 1/2.2)
+                        x_material.face_color[2] = math.pow(x_material.face_color[2], 1/2.2)
                 # 鏡面反射
                 x_material.power = principled.inputs['Specular IOR Level'].default_value
                 x_material.specular_color = principled.inputs['Specular Tint'].default_value
