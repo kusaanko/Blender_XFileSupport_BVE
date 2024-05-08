@@ -284,7 +284,7 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
 
                 # 画像を読み込み
                 texture.image = bpy.data.images.load(filepath=x_material.texture_path)
-                texture.image.colorspace_settings.name = 'Non-Color'
+                texture.image.colorspace_settings.name = 'sRGB'
                 # ベースカラーとテクスチャのカラーをリンクさせる
                 material.node_tree.links.new(principled.inputs['Base Color'], texture.outputs['Color'])
                 # アルファとテクスチャのアルファをリンクさせる
