@@ -899,13 +899,12 @@ class ExportDirectXXFile(bpy.types.Operator, ExportHelper):
         for obj in target_objects:
             if obj.type == 'MESH' and not obj.hide_get():
                 # モディファイヤーを適用した状態のオブジェクトを取得
-                # obj_tmp = obj.copy()
-                obj_tmp = obj.evaluated_get(context.evaluated_depsgraph_get())
-                mesh: bpy.types.Mesh = obj_tmp.data
-                # もとのオブジェクトに影響を与えないためコピー
-                mesh = mesh.copy()
-                # オブジェクトモードでの操作を適用した状態のメッシュを取得
-                mesh.transform(obj.matrix_world)
+                depsgraph = bpy.context.evaluated_depsgraph_get()
+                obj_tmp = obj.evaluated_get(depsgraph)
+
+                # Meshに変換
+                mesh = obj_tmp.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph)
+                
                 uv_vertexes = mesh.uv_layers.active.data
                 vertex_index = 0
                 for polygon in mesh.polygons:
@@ -938,7 +937,8 @@ class ExportDirectXXFile(bpy.types.Operator, ExportHelper):
                         faces_use_material.append(materials_dict[mesh.materials[polygon.material_index].name])
 
                     for vertex in reversed(polygon.vertices):
-                        vertex_co = mesh.vertices[vertex].co
+                        # ワールド座標から変換
+                        vertex_co = obj.matrix_world @ mesh.vertices[vertex].co
                         # スケールに合わせる
                         vertex_co[0] *= self.scale
                         vertex_co[1] *= self.scale
@@ -1440,8 +1440,6 @@ def menu_func_import(self, context):
 
 
 def menu_func_export(self, context):
-    if bpy.context.mode != "OBJECT":
-        return
     self.layout.operator(ExportDirectXXFile.bl_idname, text="DirectX XFile (.x)")
 
 # 更新完了ダイアログ
