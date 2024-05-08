@@ -95,7 +95,7 @@ TOKEN_ARRAY = 0x34
 
 class XModelMesh:
     vertices = []
-    faces = []
+    faces: List[List[int]] = []
     tex_coords = []
     normals = []
     normal_faces = []
@@ -103,11 +103,27 @@ class XModelMesh:
     material_face_indexes = []
     material_count = 0
 
+    def __init__(self):
+        self.vertices = []
+        self.faces = []
+        self.tex_coords = []
+        self.normals = []
+        self.normal_faces = []
+        self.materials = []
+        self.material_face_indexes = []
+        self.material_count = 0
+
 class XModelNode:
     node_name = ""
     transform_matrix: mathutils.Matrix = mathutils.Matrix.Identity(4)
     mesh: XModelMesh = XModelMesh()
     children: List[Self] = []
+
+    def __init__(self):
+        self.node_name = ""
+        self.transform_matrix = mathutils.Matrix.Identity(4)
+        self.mesh = XModelMesh()
+        self.children = []
 
 class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
     bl_idname = "import_model.directx_x"
@@ -140,6 +156,9 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
     )
 
     def __init__(self):
+        self.initialize()
+    
+    def initialize(self):
         self.is_binary = False
         self.float_size = 32
         self.ret_string = ""
@@ -712,6 +731,7 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
                 material.user_clear()
                 bpy.data.materials.remove(material)
 
+        self.initialize()
         # xファイルを読み込み
         with open(self.filepath, "rb") as f:
             header = f.read(16)
