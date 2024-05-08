@@ -729,6 +729,7 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
         node.children.append(child)
 
     def execute(self, context):
+        bpy.ops.object.mode_set(mode = 'OBJECT')
         for obj in bpy.context.scene.objects:
             obj.select_set(False)
 
@@ -1435,8 +1436,6 @@ template TextureFilename {
 
 # メニューに追加
 def menu_func_import(self, context):
-    if bpy.context.mode != "OBJECT":
-        return
     self.layout.operator(ImportDirectXXFile.bl_idname, text="DirectX XFile (.x)")
 
 
