@@ -6,6 +6,9 @@
     "blender_major": 4,
     "blender_minor": 0,
     "blender_subversion": 0,
+    "blender_max_major": 4,
+    "blender_max_minor": 2,
+    "blender_max_subversion": 99,
     "download_link": "https://github.com/kusaanko/Blender_XFileSupport_BVE/releases/tag/v3.2.0",
     "file_url": "https://github.com/kusaanko/Blender_XFileSupport_BVE/releases/download/v3.2.0/XFileSupport.py",
     "file_name": "XFileSupport.py"
