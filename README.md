@@ -1,7 +1,7 @@
 # Blender_XFileSupport_BVE
 Bve用に設計されたBlender用のXファイル入出力プラグイン  
 
-対応Blenderバージョン:4.0.0以降  
+対応Blenderバージョン:4.3.0以降  
 動作確認Bveバージョン:5.8, 6.0  
 strview5互換あり  
 
