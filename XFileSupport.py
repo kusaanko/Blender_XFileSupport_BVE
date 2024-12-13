@@ -1442,6 +1442,62 @@ def menu_func_import(self, context):
 def menu_func_export(self, context):
     self.layout.operator(ExportDirectXXFile.bl_idname, text="DirectX XFile (.x)")
 
+update_target_version = {}
+
+class UpdateButton(Operator):
+    bl_idname = "xfilesupport.updatebutton"
+    bl_label = "Update"
+
+    def execute(self, context):
+        return{'FINISHED'}
+
+    def invoke(self, context, event):
+        global update_target_version
+        req = urllib.request.Request(
+            update_target_version['file_url']
+        )
+        with urllib.request.urlopen(req) as response:
+            body = response.read()
+            os.remove(bpy.utils.user_resource('SCRIPTS', path="addons") + "\\" + os.path.basename(__file__))
+            f = open(bpy.utils.user_resource('SCRIPTS', path="addons") + "\\" + update_target_version['file_name'], 'bw')
+            f.write(body)
+            new_version = str(update_target_version['version_major']) + "." + str(update_target_version['version_minor']) + "." + str(update_target_version['version_subversion'])
+            print("Updated XFileSupport to " + new_version)
+            print("  to " + bpy.utils.user_resource('SCRIPTS', path="addons") + "\\" + update_target_version['file_name'])
+            # 更新ダイアログを表示
+            # show_updated_dialog(str(update_target_version['version_major']) + "." + str(update_target_version['version_minor']) + "." + str(update_target_version['version_subversion']))
+            webbrowser.open_new_tab('https://github.com/kusaanko/Blender_XFileSupport_BVE/releases')
+        return context.window_manager.invoke_props_dialog(self)
+    
+    def draw(self, context):
+        layout = self.layout
+        col = layout.column()
+        global update_target_version
+        new_version = str(update_target_version['version_major']) + "." + str(update_target_version['version_minor']) + "." + str(update_target_version['version_subversion'])
+        col.label(text="XFileSupport was updated to " + new_version + ".")
+        col.label(text="Please restart blender to apply this update.")
+        self.layout.operator("wm.quit_blender", text="Quit Blender")
+
+# 更新確認ダイアログ
+class UpdateCheckDialog(Operator):
+    bl_idname = "xfilesupport.updatecheck"
+    bl_label = "XFileSupport Update"
+
+    version: bpy.props.StringProperty(name="Update version")
+
+    def execute(self, context):
+        return {'FINISHED'}
+    
+    def invoke(self, context, event):
+        wm = context.window_manager
+        return wm.invoke_props_dialog(self)
+    
+    def draw(self, context):
+        layout = self.layout
+        col = layout.column()
+        col.label(text="XFileSupport update is available. New version is " + self.version + ".")
+        self.layout.operator(UpdateButton.bl_idname)
+
 # 更新完了ダイアログ
 class UpdatedDialog(Operator):
     bl_idname = "xfilesupport.updated"
@@ -1465,12 +1521,24 @@ class UpdatedDialog(Operator):
 
 def invoke_updated_dialog(updated_version):
     bpy.ops.xfilesupport.updated('INVOKE_DEFAULT', version=updated_version)
+    
+def invoke_update_check_dialog(updated_version):
+    bpy.ops.xfilesupport.updatecheck('INVOKE_DEFAULT', version=updated_version)
 
 def show_updated_dialog(version):
     # プラグイン読み込み完了後に実行する必要があるため、タイマーを使用
     bpy.app.timers.register(functools.partial(invoke_updated_dialog, version), first_interval=.01)
 
+def compare_version(version1, version2):
+    for i in range(3):
+        if version1[i] > version2[i]:
+            return 1 # version1 > version2
+        elif version1[i] < version2[i]:
+            return -1 # version1 < version2
+    return 0
+
 def check_update():
+    global update_target_version
     try:
         req = urllib.request.Request(
             'https://raw.githubusercontent.com/kusaanko/Blender_XFileSupport_BVE/main/versions.json'
@@ -1480,26 +1548,16 @@ def check_update():
             json_data = json.loads(body)
             for versions in json_data:
                 # 現在のBlenderバージョンで動作するか確認
-                if (versions['blender_major'], versions['blender_minor'], versions['blender_subversion']) <= bpy.app.version and \
-                    (versions['blender_max_major'], versions['blender_max_minor'], versions['blender_max_subversion']) >= bpy.app.version \
-                        if all(x in versions for x in ['blender_max_major', 'blender_max_minor', 'blender_max_subversion']) else True:
+                if compare_version((versions['blender_major'], versions['blender_minor'], versions['blender_subversion']), bpy.app.version) <= 0 and \
+                    (versions.get('blender_max_major') == None or \
+                    compare_version((versions['blender_max_major'], versions['blender_max_minor'], versions['blender_max_subversion']), bpy.app.version) >= 0):
                     # 現在のバージョンより新しいか確認
-                    if (versions['version_major'], versions['version_minor'], versions['version_subversion']) \
-                            > bl_info['version']:
+                    if compare_version((versions['version_major'], versions['version_minor'], versions['version_subversion']), bl_info['version']) > 0:
                         # 更新がある
                         if "file_url" in versions and "file_name" in versions:
-                            req = urllib.request.Request(
-                                versions['file_url']
-                            )
-                            with urllib.request.urlopen(req) as response:
-                                body = response.read()
-                                os.remove(bpy.utils.user_resource('SCRIPTS', path="addons") + "\\" + os.path.basename(__file__))
-                                f = open(bpy.utils.user_resource('SCRIPTS', path="addons") + "\\" + versions['file_name'], 'bw')
-                                f.write(body)
-                                print("Updated XFileSupport to " + str(versions['version_major']) + "." + str(versions['version_minor']) + "." + str(versions['version_subversion']))
-                                print("  to " + bpy.utils.user_resource('SCRIPTS', path="addons") + "\\" + versions['file_name'])
-                                # 更新ダイアログを表示
-                                show_updated_dialog(str(versions['version_major']) + "." + str(versions['version_minor']) + "." + str(versions['version_subversion']))
+                            update_target_version = versions
+                            new_version = str(versions['version_major']) + "." + str(versions['version_minor']) + "." + str(versions['version_subversion'])
+                            bpy.app.timers.register(functools.partial(invoke_update_check_dialog, new_version), first_interval=.01)
                         else:
                             # ファイル書き換え式更新に非対応の場合、ブラウザで通知
                             html = """
@@ -1524,10 +1582,17 @@ def check_update():
     except OSError as e:
         print(e)
 
+classes = (
+    ImportDirectXXFile,
+    ExportDirectXXFile,
+    UpdateButton,
+    UpdateCheckDialog,
+    UpdatedDialog
+)
+
 def register():
-    bpy.utils.register_class(ImportDirectXXFile)
-    bpy.utils.register_class(ExportDirectXXFile)
-    bpy.utils.register_class(UpdatedDialog)
+    for cls in classes:
+        bpy.utils.register_class(cls)
 
     bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
     bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
@@ -1541,9 +1606,8 @@ def register():
 def unregister():
     bpy.app.translations.unregister(__name__)
 
-    bpy.utils.unregister_class(ImportDirectXXFile)
-    bpy.utils.unregister_class(ExportDirectXXFile)
-    bpy.utils.unregister_class(UpdatedDialog)
+    for cls in classes:
+        bpy.utils.unregister_class(cls)
 
     bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
     bpy.types.TOPBAR_MT_file_export.remove(menu_func_export)
