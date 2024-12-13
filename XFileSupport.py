@@ -274,7 +274,6 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
 
             # ブレンドモードの設定
             material.blend_method = 'CLIP'
-            material.shadow_method = 'CLIP'
 
             # ノードを有効化
             material.use_nodes = True
@@ -1679,7 +1678,6 @@ def gen_fake_material():
 
     # ブレンドモードの設定
     material.blend_method = 'CLIP'
-    material.shadow_method = 'CLIP'
 
     # ノードを有効化
     material.use_nodes = True
