@@ -728,7 +728,8 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
         node.children.append(child)
 
     def execute(self, context):
-        bpy.ops.object.mode_set(mode = 'OBJECT')
+        if bpy.context.active_object != None:
+            bpy.ops.object.mode_set(mode = 'OBJECT')
         for obj in bpy.context.scene.objects:
             obj.select_set(False)
 
