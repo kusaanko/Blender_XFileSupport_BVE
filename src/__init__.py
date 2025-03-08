@@ -115,7 +115,7 @@ class XModelNode:
         self.children = []
 
 class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
-    bl_idname = "import_model.directx_x"
+    bl_idname = "import_export_directx_for_bve.import_directx_x"
     bl_description = 'Import from X file (.x)'
     bl_label = "Import DirectX X File"
     bl_space_type = 'PROPERTIES'
@@ -801,10 +801,173 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
 
         return {'FINISHED'}
 
+# 出力用にデータを整形
+class ModelDataUtility:
+    def __init__(self):
+        self.vertexes = []
+        self.normals = []
+        self.vertex_use_normal = []
+        self.faces = []
+        self.materials = []
+        self.x_materials = []
+        self.faces_use_material = []
+        self.uv_data = []
+        self.fake_material = gen_fake_material()
+
+    def execute(self, context, export_selected_only: bool, scale: float, gamma_correction: bool):
+        self.vertexes = []
+        vertexes_dict = {}
+        self.normals = []
+        normals_dict = {}
+        self.vertex_use_normal = []
+        self.faces = []
+        materials_dict = {}
+        self.materials = []
+        self.x_materials = []
+        self.faces_use_material = []
+        self.uv_data = []
+        self.fake_material = gen_fake_material()
+
+        target_objects = bpy.context.scene.objects
+        if export_selected_only:
+            target_objects = bpy.context.selected_objects
+        for obj in target_objects:
+            if obj.type == 'MESH' and not obj.hide_get():
+                # モディファイヤーを適用した状態のオブジェクトを取得
+                depsgraph = bpy.context.evaluated_depsgraph_get()
+                obj_tmp = obj.evaluated_get(depsgraph)
+
+                # Meshに変換
+                mesh = obj_tmp.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph)
+                
+                uv_vertexes = mesh.uv_layers.active.data
+                vertex_index = 0
+                for polygon in mesh.polygons:
+                    ver = []
+                    normal = []
+                    smooth_shading = polygon.use_smooth
+                    nor = polygon.normal
+                    vertex_index += len(polygon.vertices) - 1
+                    texture = ""
+                    if len(mesh.materials) == 0:
+                        if self.fake_material.name not in materials_dict.keys():
+                            materials_dict[self.fake_material.name] = len(materials_dict.keys())
+                            self.materials.append(self.fake_material)
+                        self.faces_use_material.append(materials_dict[self.fake_material.name])
+                    else:
+                        for material in mesh.materials:
+                            if material.name not in materials_dict.keys():
+                                materials_dict[material.name] = len(materials_dict.keys())
+                                self.materials.append(material)
+                            if material.use_nodes:
+                                # ノードを取得
+                                nodes = material.node_tree.nodes
+                                # プリンシプルBSDFを取得
+                                principled = next(n for n in nodes if n.type == 'BSDF_PRINCIPLED')
+                                # テクスチャの有無を確認
+                                if len(principled.inputs['Base Color'].links) > 0:
+                                    for link in principled.inputs['Base Color'].links:
+                                        if link.from_node.type == "TEX_IMAGE":
+                                            texture = os.path.basename(link.from_node.image.filepath)
+                        self.faces_use_material.append(materials_dict[mesh.materials[polygon.material_index].name])
+
+                    for vertex in reversed(polygon.vertices):
+                        # ワールド座標から変換
+                        vertex_co = obj.matrix_world @ mesh.vertices[vertex].co
+                        # スケールに合わせる
+                        vertex_co[0] *= scale
+                        vertex_co[1] *= scale
+                        vertex_co[2] *= scale
+                        # 頂点が他のデータと重複していたらそれを使用する
+                        # 頂点とUVはセットなのでセットで重複を調べる
+                        uv = uv_vertexes[vertex_index].uv
+                        if texture == "":
+                            uv = (0.0, 0.0)
+                        key = vertex_to_str(vertex_co) + str(uv)
+                        if key not in vertexes_dict.keys():
+                            vertexes_dict[key] = len(vertexes_dict.keys())
+                            self.vertexes.append(vertex_co)
+                            self.uv_data.append(uv)
+                        if smooth_shading:
+                            nor = mesh.vertices[vertex].normal
+                        if vertex_to_str(nor) not in normals_dict.keys():
+                            normals_dict[vertex_to_str(nor)] = len(normals_dict.keys())
+                            self.normals.append(nor)
+                        ver.append(vertexes_dict[key])
+                        normal.append(normals_dict[vertex_to_str(nor)])
+                        vertex_index -= 1
+                    vertex_index += len(polygon.vertices) + 1
+                    self.faces.append(ver)
+                    self.vertex_use_normal.append(normal)
+
+        for material in self.materials:
+            # ノードを使用するかどうか
+            x_material = XMaterial()
+            # マテリアル名はアルファベット英数字、アンダーバー、ハイフン
+            if re.fullmatch("[0-9A-z_-]*", material.name):
+                x_material.name = material.name
+            if material.use_nodes:
+                texture = ""
+
+                # ノードを取得
+                nodes = material.node_tree.nodes
+                # プリンシプルBSDFを取得
+                principled = next(n for n in nodes if n.type == 'BSDF_PRINCIPLED')
+                # ベースカラー
+                if len(principled.inputs['Base Color'].links) > 0:
+                    need_color = True
+                    for link in principled.inputs['Base Color'].links:
+                        if link.from_node.type == "TEX_IMAGE":
+                            texture = os.path.basename(link.from_node.image.filepath)
+                        if link.from_node.type == "RGB":
+                            need_color = False
+                            for out in link.from_node.outputs:
+                                if out.type == 'RGBA':
+                                    x_material.face_color = [out.default_value[0], out.default_value[1], out.default_value[2], principled.inputs['Alpha'].default_value]
+                                    if gamma_correction:
+                                        x_material.face_color[0] = math.pow(x_material.face_color[0], 1/2.2)
+                                        x_material.face_color[1] = math.pow(x_material.face_color[1], 1/2.2)
+                                        x_material.face_color[2] = math.pow(x_material.face_color[2], 1/2.2)
+                        if link.from_node.type == "GAMMA":
+                            for input in link.from_node.inputs:
+                                if input.identifier == 'Gamma':
+                                    if round(input.default_value * 100) != 220:
+                                        raise Exception(bpy.app.translations.pgettext("Gamma correction is not 2.2"))
+                                if input.identifier == 'Color':
+                                    need_color = False
+                                    x_material.face_color = (input.default_value[0], input.default_value[1], input.default_value[2], principled.inputs['Alpha'].default_value)
+                    if need_color:
+                        x_material.face_color = (1.0, 1.0, 1.0, 1.0)
+                else:
+                    col = principled.inputs['Base Color'].default_value
+                    x_material.face_color = [col[0], col[1], col[2], principled.inputs['Alpha'].default_value]
+                    if gamma_correction:
+                        x_material.face_color[0] = math.pow(x_material.face_color[0], 1/2.2)
+                        x_material.face_color[1] = math.pow(x_material.face_color[1], 1/2.2)
+                        x_material.face_color[2] = math.pow(x_material.face_color[2], 1/2.2)
+                # 鏡面反射
+                x_material.power = principled.inputs['Specular IOR Level'].default_value
+                x_material.specular_color = principled.inputs['Specular Tint'].default_value
+
+                # 放射色
+                x_material.emission_color = principled.inputs['Emission Color'].default_value
+
+                if texture != "":
+                    x_material.texture_path = texture
+            else:
+                # ベースカラー
+                x_material.face_color = material.diffuse_color
+                # 鏡面反射
+                x_material.power = material.specular_intensity
+                # 鏡面反射色
+                x_material.specular_color = material.specular_color
+                # 放射色
+                x_material.emission_color = (0.0, 0.0, 0.0)
+            self.x_materials.append(x_material)
 
 # Xファイルに出力
 class ExportDirectXXFile(bpy.types.Operator, ExportHelper):
-    bl_idname = "export_model.directx_x"
+    bl_idname = "import_export_directx_for_bve.export_directx_x"
     bl_description = 'Export to X file (.x)'
     bl_label = "Export DirectX X File"
     bl_space_type = 'PROPERTIES'
@@ -861,161 +1024,23 @@ class ExportDirectXXFile(bpy.types.Operator, ExportHelper):
         if not self.filepath.endswith(".x"):
             return {'CANCELLED'}
 
-        vertexes = []
-        vertexes_dict = {}
-        normals = []
-        normals_dict = {}
-        vertex_use_normal = []
-        faces = []
-        materials_dict = {}
-        materials = []
-        x_materials = []
-        faces_use_material = []
-        uv_data = []
-        fake_material = gen_fake_material()
+        model_data_utility = ModelDataUtility()
+        model_data_utility.execute(context, export_selected_only=self.export_selected_only, scale=self.scale, gamma_correction=self.gamma_correction)
+        vertexes = model_data_utility.vertexes
+        normals = model_data_utility.normals
+        vertex_use_normal = model_data_utility.vertex_use_normal
+        faces = model_data_utility.faces
+        materials = model_data_utility.materials
+        x_materials = model_data_utility.x_materials
+        faces_use_material = model_data_utility.faces_use_material
+        uv_data = model_data_utility.uv_data
+        fake_material = model_data_utility.fake_material
 
         is_binary = False
         if self.mode == "binary":
             is_binary = True
         if self.mode == "binary_zip":
             is_binary = True
-
-        target_objects = bpy.context.scene.objects
-        if self.export_selected_only:
-            target_objects = bpy.context.selected_objects
-        for obj in target_objects:
-            if obj.type == 'MESH' and not obj.hide_get():
-                # モディファイヤーを適用した状態のオブジェクトを取得
-                depsgraph = bpy.context.evaluated_depsgraph_get()
-                obj_tmp = obj.evaluated_get(depsgraph)
-
-                # Meshに変換
-                mesh = obj_tmp.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph)
-                
-                uv_vertexes = mesh.uv_layers.active.data
-                vertex_index = 0
-                for polygon in mesh.polygons:
-                    ver = []
-                    normal = []
-                    smooth_shading = polygon.use_smooth
-                    nor = polygon.normal
-                    vertex_index += len(polygon.vertices) - 1
-                    texture = ""
-                    if len(mesh.materials) == 0:
-                        if fake_material.name not in materials_dict.keys():
-                            materials_dict[fake_material.name] = len(materials_dict.keys())
-                            materials.append(fake_material)
-                        faces_use_material.append(materials_dict[fake_material.name])
-                    else:
-                        for material in mesh.materials:
-                            if material.name not in materials_dict.keys():
-                                materials_dict[material.name] = len(materials_dict.keys())
-                                materials.append(material)
-                            if material.use_nodes:
-                                # ノードを取得
-                                nodes = material.node_tree.nodes
-                                # プリンシプルBSDFを取得
-                                principled = next(n for n in nodes if n.type == 'BSDF_PRINCIPLED')
-                                # テクスチャの有無を確認
-                                if len(principled.inputs['Base Color'].links) > 0:
-                                    for link in principled.inputs['Base Color'].links:
-                                        if link.from_node.type == "TEX_IMAGE":
-                                            texture = os.path.basename(link.from_node.image.filepath)
-                        faces_use_material.append(materials_dict[mesh.materials[polygon.material_index].name])
-
-                    for vertex in reversed(polygon.vertices):
-                        # ワールド座標から変換
-                        vertex_co = obj.matrix_world @ mesh.vertices[vertex].co
-                        # スケールに合わせる
-                        vertex_co[0] *= self.scale
-                        vertex_co[1] *= self.scale
-                        vertex_co[2] *= self.scale
-                        # 頂点が他のデータと重複していたらそれを使用する
-                        # 頂点とUVはセットなのでセットで重複を調べる
-                        uv = uv_vertexes[vertex_index].uv
-                        if texture == "":
-                            uv = (0.0, 0.0)
-                        key = vertex_to_str(vertex_co) + str(uv)
-                        if key not in vertexes_dict.keys():
-                            vertexes_dict[key] = len(vertexes_dict.keys())
-                            vertexes.append(vertex_co)
-                            uv_data.append(uv)
-                        if smooth_shading:
-                            nor = mesh.vertices[vertex].normal
-                        if vertex_to_str(nor) not in normals_dict.keys():
-                            normals_dict[vertex_to_str(nor)] = len(normals_dict.keys())
-                            normals.append(nor)
-                        ver.append(vertexes_dict[key])
-                        normal.append(normals_dict[vertex_to_str(nor)])
-                        vertex_index -= 1
-                    vertex_index += len(polygon.vertices) + 1
-                    faces.append(ver)
-                    vertex_use_normal.append(normal)
-
-        for material in materials:
-            # ノードを使用するかどうか
-            x_material = XMaterial()
-            # マテリアル名はアルファベット英数字、アンダーバー、ハイフン
-            if re.fullmatch("[0-9A-z_-]*", material.name):
-                x_material.name = material.name
-            if material.use_nodes:
-                texture = ""
-
-                # ノードを取得
-                nodes = material.node_tree.nodes
-                # プリンシプルBSDFを取得
-                principled = next(n for n in nodes if n.type == 'BSDF_PRINCIPLED')
-                # ベースカラー
-                if len(principled.inputs['Base Color'].links) > 0:
-                    need_color = True
-                    for link in principled.inputs['Base Color'].links:
-                        if link.from_node.type == "TEX_IMAGE":
-                            texture = os.path.basename(link.from_node.image.filepath)
-                        if link.from_node.type == "RGB":
-                            need_color = False
-                            for out in link.from_node.outputs:
-                                if out.type == 'RGBA':
-                                    x_material.face_color = [out.default_value[0], out.default_value[1], out.default_value[2], principled.inputs['Alpha'].default_value]
-                                    if self.gamma_correction:
-                                        x_material.face_color[0] = math.pow(x_material.face_color[0], 1/2.2)
-                                        x_material.face_color[1] = math.pow(x_material.face_color[1], 1/2.2)
-                                        x_material.face_color[2] = math.pow(x_material.face_color[2], 1/2.2)
-                        if link.from_node.type == "GAMMA":
-                            for input in link.from_node.inputs:
-                                if input.identifier == 'Gamma':
-                                    if round(input.default_value * 100) != 220:
-                                        raise Exception(bpy.app.translations.pgettext("Gamma correction is not 2.2"))
-                                if input.identifier == 'Color':
-                                    need_color = False
-                                    x_material.face_color = (input.default_value[0], input.default_value[1], input.default_value[2], principled.inputs['Alpha'].default_value)
-                    if need_color:
-                        x_material.face_color = (1.0, 1.0, 1.0, 1.0)
-                else:
-                    col = principled.inputs['Base Color'].default_value
-                    x_material.face_color = [col[0], col[1], col[2], principled.inputs['Alpha'].default_value]
-                    if self.gamma_correction:
-                        x_material.face_color[0] = math.pow(x_material.face_color[0], 1/2.2)
-                        x_material.face_color[1] = math.pow(x_material.face_color[1], 1/2.2)
-                        x_material.face_color[2] = math.pow(x_material.face_color[2], 1/2.2)
-                # 鏡面反射
-                x_material.power = principled.inputs['Specular IOR Level'].default_value
-                x_material.specular_color = principled.inputs['Specular Tint'].default_value
-
-                # 放射色
-                x_material.emission_color = principled.inputs['Emission Color'].default_value
-
-                if texture != "":
-                    x_material.texture_path = texture
-            else:
-                # ベースカラー
-                x_material.face_color = material.diffuse_color
-                # 鏡面反射
-                x_material.power = material.specular_intensity
-                # 鏡面反射色
-                x_material.specular_color = material.specular_color
-                # 放射色
-                x_material.emission_color = (0.0, 0.0, 0.0)
-            x_materials.append(x_material)
 
         if is_binary:
             with open(self.filepath, mode='wb') as f:
@@ -1421,158 +1446,15 @@ template TextureFilename {
 
 # メニューに追加
 def menu_func_import(self, context):
-    self.layout.operator(ImportDirectXXFile.bl_idname, text="DirectX XFile (.x)")
+    self.layout.operator(ImportDirectXXFile.bl_idname, text="DirectX XFile (.x) for BVE")
 
 
 def menu_func_export(self, context):
-    self.layout.operator(ExportDirectXXFile.bl_idname, text="DirectX XFile (.x)")
-
-update_target_version = {}
-
-class UpdateButton(Operator):
-    bl_idname = "xfilesupport.updatebutton"
-    bl_label = "Update"
-
-    def execute(self, context):
-        return{'FINISHED'}
-
-    def invoke(self, context, event):
-        global update_target_version
-        req = urllib.request.Request(
-            update_target_version['file_url']
-        )
-        with urllib.request.urlopen(req) as response:
-            body = response.read()
-            os.remove(bpy.utils.user_resource('SCRIPTS', path="addons") + "\\" + os.path.basename(__file__))
-            f = open(bpy.utils.user_resource('SCRIPTS', path="addons") + "\\" + update_target_version['file_name'], 'bw')
-            f.write(body)
-            new_version = str(update_target_version['version_major']) + "." + str(update_target_version['version_minor']) + "." + str(update_target_version['version_subversion'])
-            print("Updated XFileSupport to " + new_version)
-            print("  to " + bpy.utils.user_resource('SCRIPTS', path="addons") + "\\" + update_target_version['file_name'])
-            # 更新ダイアログを表示
-            # show_updated_dialog(str(update_target_version['version_major']) + "." + str(update_target_version['version_minor']) + "." + str(update_target_version['version_subversion']))
-            webbrowser.open_new_tab('https://github.com/kusaanko/Blender_XFileSupport_BVE/releases')
-        return context.window_manager.invoke_props_dialog(self)
-    
-    def draw(self, context):
-        layout = self.layout
-        col = layout.column()
-        global update_target_version
-        new_version = str(update_target_version['version_major']) + "." + str(update_target_version['version_minor']) + "." + str(update_target_version['version_subversion'])
-        col.label(text="XFileSupport was updated to " + new_version + ".")
-        col.label(text="Please restart blender to apply this update.")
-        self.layout.operator("wm.quit_blender", text="Quit Blender")
-
-# 更新確認ダイアログ
-class UpdateCheckDialog(Operator):
-    bl_idname = "xfilesupport.updatecheck"
-    bl_label = "XFileSupport Update"
-
-    version: bpy.props.StringProperty(name="Update version")
-
-    def execute(self, context):
-        return {'FINISHED'}
-    
-    def invoke(self, context, event):
-        wm = context.window_manager
-        return wm.invoke_props_dialog(self)
-    
-    def draw(self, context):
-        layout = self.layout
-        col = layout.column()
-        col.label(text="XFileSupport update is available. New version is " + self.version + ".")
-        self.layout.operator(UpdateButton.bl_idname)
-
-# 更新完了ダイアログ
-class UpdatedDialog(Operator):
-    bl_idname = "xfilesupport.updated"
-    bl_label = "XFileSupport Updated"
-
-    version: bpy.props.StringProperty(name="Updated version")
-
-    def execute(self, context):
-        webbrowser.open_new_tab('https://github.com/kusaanko/Blender_XFileSupport_BVE/releases')
-        return {'FINISHED'}
-    
-    def invoke(self, context, event):
-        wm = context.window_manager
-        return wm.invoke_props_dialog(self)
-    
-    def draw(self, context):
-        layout = self.layout
-        col = layout.column()
-        col.label(text="XFileSupport was updated to " + self.version + ".")
-        col.label(text="Please restart blender to apply this update.")
-
-def invoke_updated_dialog(updated_version):
-    bpy.ops.xfilesupport.updated('INVOKE_DEFAULT', version=updated_version)
-    
-def invoke_update_check_dialog(updated_version):
-    bpy.ops.xfilesupport.updatecheck('INVOKE_DEFAULT', version=updated_version)
-
-def show_updated_dialog(version):
-    # プラグイン読み込み完了後に実行する必要があるため、タイマーを使用
-    bpy.app.timers.register(functools.partial(invoke_updated_dialog, version), first_interval=.01)
-
-def compare_version(version1, version2):
-    for i in range(3):
-        if version1[i] > version2[i]:
-            return 1 # version1 > version2
-        elif version1[i] < version2[i]:
-            return -1 # version1 < version2
-    return 0
-
-def check_update():
-    global update_target_version
-    try:
-        req = urllib.request.Request(
-            'https://raw.githubusercontent.com/kusaanko/Blender_XFileSupport_BVE/main/versions.json'
-        )
-        with urllib.request.urlopen(req) as response:
-            body = response.read()
-            json_data = json.loads(body)
-            for versions in json_data:
-                # 現在のBlenderバージョンで動作するか確認
-                if compare_version((versions['blender_major'], versions['blender_minor'], versions['blender_subversion']), bpy.app.version) <= 0 and \
-                    (versions.get('blender_max_major') == None or \
-                    compare_version((versions['blender_max_major'], versions['blender_max_minor'], versions['blender_max_subversion']), bpy.app.version) >= 0):
-                    # 現在のバージョンより新しいか確認
-                    if compare_version((versions['version_major'], versions['version_minor'], versions['version_subversion']), bl_info['version']) > 0:
-                        # 更新がある
-                        if "file_url" in versions and "file_name" in versions:
-                            update_target_version = versions
-                            new_version = str(versions['version_major']) + "." + str(versions['version_minor']) + "." + str(versions['version_subversion'])
-                            bpy.app.timers.register(functools.partial(invoke_update_check_dialog, new_version), first_interval=.01)
-                        else:
-                            # ファイル書き換え式更新に非対応の場合、ブラウザで通知
-                            html = """
-<html>
-<head>
-  <title>XFileSupport Update</title>
-  <meta charset="UTF-8" />
-</head>
-<body>
-  <h1>""" + bpy.app.translations.pgettext("The update of XFileSupport is available!") + """</h1>
-  <p>""" + bpy.app.translations.pgettext("Your version:") + " " + str(bl_info['version'][0]) + "." + str(
-                            bl_info['version'][1]) + "." + str(bl_info['version'][2]) + """</p>
-  <p>""" + bpy.app.translations.pgettext("New version:") + " " + str(versions['version_major']) + "." + str(
-                            versions['version_minor']) + "." + str(versions['version_subversion']) + """</p>
-  <p><a href=""" + versions['download_link'] + ">" + bpy.app.translations.pgettext("Please download from this link.") + """</a></p>
-</body>
-</html>"""
-                            webbrowser.open_new_tab(
-                                "https://kusaanko.github.io/custom_page.html?" + urllib.parse.quote(html))
-                    # 現在のBlenderのバージョンで動作するバージョンであるとき、終了。それより古いバージョンは見に行かない
-                    break
-    except OSError as e:
-        print(e)
+    self.layout.operator(ExportDirectXXFile.bl_idname, text="DirectX XFile (.x) for BVE")
 
 classes = (
     ImportDirectXXFile,
-    ExportDirectXXFile,
-    UpdateButton,
-    UpdateCheckDialog,
-    UpdatedDialog
+    ExportDirectXXFile
 )
 
 def register():
@@ -1581,9 +1463,6 @@ def register():
 
     bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
     bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
-
-    thread = threading.Thread(target=check_update)
-    thread.start()
 
     bpy.app.translations.register(__name__, translations_dict)
 
