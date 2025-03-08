@@ -22,21 +22,6 @@ import functools
 import zlib
 import mathutils
 
-bl_info = {
-    "name": "Import/Export DirectX X File (.x) for Bve",
-    "author": "kusaanko",
-    "version": (4, 0, 0),
-    "blender": (4, 3, 0),
-    "location": "File > Import / Export > DirectX XFile(.x)",
-    "description": "Import/Export files in the DirectX X file (.x)",
-    "warning": "This plug-in is for Bve. So some features are not supported.",
-    "wiki_url": "https://github.com/kusaanko/Blender_XFileSupport_BVE/wiki",
-    "tracker_url": "",
-    "category": "Import-Export"
-}
-
-__version__ = "4.0.0"
-
 # locale
 #    (target_context, key): translated_str
 translations_dict = {

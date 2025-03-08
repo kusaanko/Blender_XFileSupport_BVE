@@ -39,5 +39,20 @@ Wikiページを御覧ください。[Wiki](https://github.com/kusaanko/Blender_
 <img src="for_readme/check.jpg" width="500px;"></img>  
 「DirectX」と検索してこのプラグインが有効になっていることを確認してください。
 
+# ビルド
+
+```
+blender --command extension build --output-dir ../out
+```
+
+# 開発
+bpyパッケージを導入したvenv環境下で補完を利かせながら開発することをお勧めします。
+
+```
+python -m venv .venv
+./.venv/Scripts/activate
+pip install bpy
+```
+
 # ToDo
 - CSV入力のサポート
