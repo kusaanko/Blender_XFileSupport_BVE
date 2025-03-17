@@ -9,7 +9,7 @@ import os
 import re
 from typing import List, Self
 import bpy
-from bpy.props import StringProperty, BoolProperty, FloatProperty, EnumProperty
+from bpy.props import StringProperty, BoolProperty, FloatProperty, FloatVectorProperty, EnumProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 from bpy.types import Panel, Operator
 import urllib.request
@@ -28,10 +28,6 @@ translations_dict = {
     "ja_JP": {
         ("*", "Remove All Objects and Materials"): "全てのオブジェクトとマテリアルを削除する",
         ("*", "Gamma correction"): "ガンマ補正",
-        ("*", "The update of XFileSupport is available!"): "XFileSupportの更新が利用可能です！",
-        ("*", "Your version:"): "現在のバージョン:",
-        ("*", "New version:"): "新しいバージョン:",
-        ("*", "Please download from this link."): "このリンクからダウンロードしてください。",
         ("*", "This file is not X file!"): "このファイルはXファイルではありません！",
         ("*", "Output mode"): "出力モード",
         ("*", "Binary"): "バイナリ",
@@ -43,9 +39,9 @@ translations_dict = {
         ("*", "Export onyl selected objects"): "選択したオブジェクトのみエクスポート",
         ("*", "Export only necessary data"): "必要なデータのみエクスポート",
         ("*", "Gamma correction is not 2.2"): "ガンマ補正は2.2である必要があります",
-        ("*", "XFileSupport was updated to %s"): "XFileSupportは%sにアップデートされました。",
-        ("*", "Please restart Blender to apply this update."): "この更新を適用するには、Blenderを再起動してください。",
         ("*", "This plug-in is for Bve. So some features are not supported."): "このプラグインはBve向けです。そのため、一部の機能はサポートされていません。",
+        ("*", "For OpenBVE"): "OpenBVE向け",
+        ("*", "Decal transparent color"): "テクスチャの透過色",
     }
 }
 
@@ -808,11 +804,9 @@ class ModelDataUtility:
         self.normals = []
         self.vertex_use_normal = []
         self.faces = []
-        self.materials = []
         self.x_materials = []
         self.faces_use_material = []
         self.uv_data = []
-        self.fake_material = gen_fake_material()
 
     def execute(self, context, export_selected_only: bool, scale: float, gamma_correction: bool):
         self.vertexes = []
@@ -821,12 +815,12 @@ class ModelDataUtility:
         normals_dict = {}
         self.vertex_use_normal = []
         self.faces = []
-        materials_dict = {}
-        self.materials = []
-        self.x_materials = []
+        materials_dict: list[int] = {}
+        materials = []
+        self.x_materials: list[XMaterial] = []
         self.faces_use_material = []
         self.uv_data = []
-        self.fake_material = gen_fake_material()
+        fake_material = gen_fake_material()
 
         target_objects = bpy.context.scene.objects
         if export_selected_only:
@@ -850,15 +844,15 @@ class ModelDataUtility:
                     vertex_index += len(polygon.vertices) - 1
                     texture = ""
                     if len(mesh.materials) == 0:
-                        if self.fake_material.name not in materials_dict.keys():
-                            materials_dict[self.fake_material.name] = len(materials_dict.keys())
-                            self.materials.append(self.fake_material)
-                        self.faces_use_material.append(materials_dict[self.fake_material.name])
+                        if fake_material.name not in materials_dict.keys():
+                            materials_dict[fake_material.name] = len(materials_dict.keys())
+                            materials.append(fake_material)
+                        self.faces_use_material.append(materials_dict[fake_material.name])
                     else:
                         for material in mesh.materials:
                             if material.name not in materials_dict.keys():
                                 materials_dict[material.name] = len(materials_dict.keys())
-                                self.materials.append(material)
+                                materials.append(material)
                             if material.use_nodes:
                                 # ノードを取得
                                 nodes = material.node_tree.nodes
@@ -900,7 +894,7 @@ class ModelDataUtility:
                     self.faces.append(ver)
                     self.vertex_use_normal.append(normal)
 
-        for material in self.materials:
+        for material in materials:
             # ノードを使用するかどうか
             x_material = XMaterial()
             # マテリアル名はアルファベット英数字、アンダーバー、ハイフン
@@ -964,6 +958,11 @@ class ModelDataUtility:
                 # 放射色
                 x_material.emission_color = (0.0, 0.0, 0.0)
             self.x_materials.append(x_material)
+            
+        # 生成した偽物のマテリアルを削除
+        fake_material.user_clear()
+        
+        bpy.data.materials.remove(fake_material)
 
 # Xファイルに出力
 class ExportDirectXXFile(bpy.types.Operator, ExportHelper):
@@ -1030,11 +1029,9 @@ class ExportDirectXXFile(bpy.types.Operator, ExportHelper):
         normals = model_data_utility.normals
         vertex_use_normal = model_data_utility.vertex_use_normal
         faces = model_data_utility.faces
-        materials = model_data_utility.materials
         x_materials = model_data_utility.x_materials
         faces_use_material = model_data_utility.faces_use_material
         uv_data = model_data_utility.uv_data
-        fake_material = model_data_utility.fake_material
 
         is_binary = False
         if self.mode == "binary":
@@ -1380,7 +1377,7 @@ template TextureFilename {
 
             # マテリアルデータ
             x_file_content += " MeshMaterialList {\n"
-            x_file_content += "  " + str(len(materials)) + ";\n"
+            x_file_content += "  " + str(len(x_materials)) + ";\n"
             x_file_content += "  " + str(len(faces_use_material)) + ";\n"
             for material_index in faces_use_material:
                 x_file_content += "  " + str(material_index) + ",\n"
@@ -1437,11 +1434,136 @@ template TextureFilename {
             with open(self.filepath, mode='w') as f:
                 f.write(x_file_content)
 
-        # 生成した偽物のマテリアルを削除
-        fake_material.user_clear()
-        
-        bpy.data.materials.remove(fake_material)
+        return {'FINISHED'}
 
+
+# Xファイルに出力
+class ExportCSVXFile(bpy.types.Operator, ExportHelper):
+    bl_idname = "import_export_directx_for_bve.export_csv"
+    bl_description = 'Export to BVE CSV file (.csv)'
+    bl_label = "Export BVE CSV File"
+    bl_space_type = 'PROPERTIES'
+    bl_region_type = 'WINDOW'
+    bl_options = {'UNDO'}
+
+    filepath: StringProperty(
+        name="export file",
+        subtype='FILE_PATH'
+    )
+
+    filename_ext = ".csv"
+
+    filter_glob: StringProperty(
+        default="*.csv",
+        options={'HIDDEN'},
+    )
+
+    scale: FloatProperty(
+        name="Scale",
+        default=1.0,
+    )
+
+    open_bve_mode: BoolProperty(
+        name="For OpenBVE",
+        default=False,
+    )
+
+    export_selected_only: BoolProperty(
+        name="Export only selected objects",
+        default=False,
+    )
+
+    gamma_correction: BoolProperty(
+        name="Gamma correction",
+        default=True,
+    )
+
+    decal_transparent_color: FloatVectorProperty(
+        name="Decal transparent color",
+        size=4,
+        subtype='COLOR',
+        default=(0.0, 0.0, 0.0, 1.0),
+    )
+
+    def execute(self, context):
+        if not self.filepath.endswith(".csv"):
+            return {'CANCELLED'}
+
+        model_data_utility = ModelDataUtility()
+        model_data_utility.execute(context, export_selected_only=self.export_selected_only, scale=self.scale, gamma_correction=self.gamma_correction)
+        vertexes = model_data_utility.vertexes
+        faces = model_data_utility.faces
+        x_materials = model_data_utility.x_materials
+        faces_use_material = model_data_utility.faces_use_material
+        uv_data = model_data_utility.uv_data
+
+        csv_file_content = ""
+
+        # マテリアルごとに作成
+        for material_index in range(len(x_materials)):
+            csv_file_content += 'CreateMeshBuilder,\n'
+            vertices_dict = {}
+            vertices_list = []
+            uv_vertices_list = []
+            faces_no_duplicates = []
+            x_material = x_materials[material_index]
+            for face_index in range(len(faces)):
+                x_material_index = faces_use_material[face_index]
+                if x_material_index != material_index:
+                    continue
+                vertex_indices = []
+                face = faces[face_index]
+                for vertex_index in face:
+                    vertex = vertexes[vertex_index]
+                    # 頂点が他のデータと重複していたらそれを使用する
+                    # 頂点とUVはセットなのでセットで重複を調べる
+                    uv = uv_data[vertex_index]
+                    if x_material.texture_path == "":
+                        uv = (0.0, 0.0)
+                    key = vertex_to_str(vertex) + str(uv)
+                    if key not in vertices_dict.keys():
+                        vertices_dict[key] = len(vertices_dict.keys())
+                        vertices_list.append(vertex)
+                        uv_vertices_list.append(uv)
+                    vertex_indices.append(vertices_dict[key])
+                faces_no_duplicates.append(vertex_indices)
+            # 頂点データ
+            for vertex in vertices_list:
+                csv_file_content += "AddVertex," + float_to_str(vertex[0]) + "," + float_to_str(vertex[2]) + "," + float_to_str(vertex[1]) + "\n"
+            # 面データ
+            for face in faces_no_duplicates:
+                csv_file_content += "AddFace,"
+                for vertex_index in face:
+                    csv_file_content += str(vertex_index) + ","
+                csv_file_content = csv_file_content[0:-1] + "\n"
+            csv_file_content += "GenerateNormals\n"
+            has_texture = False
+            if x_material.texture_path != "":
+                csv_file_content += "LoadTexture," + x_material.texture_path + "\n"
+                csv_file_content += "SetDecalTransparentColor," + \
+                    str(round(self.decal_transparent_color[0] * 255)) + "," + \
+                    str(round(self.decal_transparent_color[1] * 255)) + "," + \
+                    str(round(self.decal_transparent_color[2] * 255)) + "," + \
+                    str(round(self.decal_transparent_color[3] * 255)) + "\n"
+                has_texture = True
+            csv_file_content += "SetColor," + \
+                str(round(x_material.face_color[0] * 255)) + "," + \
+                str(round(x_material.face_color[1] * 255)) + "," + \
+                str(round(x_material.face_color[2] * 255)) + "," + \
+                str(round(x_material.face_color[3] * 255)) + "\n"
+            # OpenBVEでは放射色に対応
+            if self.open_bve_mode:
+                csv_file_content += "SetEmissiveColor," + \
+                    str(round(x_material.emission_color[0] * 255)) + "," + \
+                    str(round(x_material.emission_color[1] * 255)) + "," + \
+                    str(round(x_material.emission_color[2] * 255)) + "\n"
+            # UVデータ
+            if has_texture:
+                for i in range(0, len(uv_vertices_list)):
+                    csv_file_content += "SetTextureCoordinates," + str(i) + "," + float_to_str(uv_vertices_list[i][0]) + "," + float_to_str(uv_vertices_list[i][1]) + "\n"
+
+        with open(self.filepath, mode='w') as f:
+            f.write(csv_file_content)
         return {'FINISHED'}
 
 # メニューに追加
@@ -1451,10 +1573,12 @@ def menu_func_import(self, context):
 
 def menu_func_export(self, context):
     self.layout.operator(ExportDirectXXFile.bl_idname, text="DirectX XFile (.x) for BVE")
+    self.layout.operator(ExportCSVXFile.bl_idname, text="CSV (.csv) for BVE")
 
 classes = (
     ImportDirectXXFile,
-    ExportDirectXXFile
+    ExportDirectXXFile,
+    ExportCSVXFile,
 )
 
 def register():
@@ -1531,6 +1655,11 @@ def vertex_to_str(vertex):
     # Blender X Z Y
     # DirectX X Y Z
     return float_to_str(round(vertex[0], 6)) + ";" + float_to_str(round(vertex[2], 6)) + ";" + float_to_str(round(vertex[1], 6))
+
+def vertex_to_str_csv(vertex):
+    # Blender X Z Y
+    # DirectX X Y Z
+    return float_to_str(round(vertex[0], 6)) + "," + float_to_str(round(vertex[2], 6)) + "," + float_to_str(round(vertex[1], 6))
 
 
 def gen_fake_material():
