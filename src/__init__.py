@@ -1,7 +1,7 @@
 # https://github.com/kusaanko/Blender_XFileSupport_BVE
 #
 # Copyright (c) 2021 kusaanko
-# This is licensed under the Apache License 2.0
+# This is licensed under GPL v3.0 or later
 # see https://github.com/kusaanko/Blender_XFileSupport_BVE/blob/main/LICENSE
 
 import math
