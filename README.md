@@ -3,38 +3,67 @@ Bve用に設計されたBlender用のXファイル入出力アドオン
 
 CSV出力にも対応しています。また、OpenBVE専用のCSV機能にも対応します。
 
+対応Blenderバージョン:4.3.0以降  
+動作確認Bveバージョン:5.8, 6.0  
+strview5互換あり  
+csvview5互換あり  
+
+# 対応しているXファイルの機能 
+* 頂点
+* 面
+* 法線(インポート時には使用されません)
+* マテリアル
+* テクスチャ
+* テキスト、バイナリ形式、バイナリ圧縮形式
+* Frame
+
+# 対応しているCSVファイルの機能
+* 全て
+
+# 対応しているBlenderの機能
+* マテリアル
+  * ノード未使用時の色
+  * プリンシプルBSDFノード
+  * テクスチャノード
+  * ベースカラー
+  * アルファ
+  * 放射
+  * ガンマ
+* フラットシェード、スムースシェード
+* モディファイアー(100％動作はしません。)
+
 Blender Import / Export add-on for Bve
 
 Exporting to CSV is also supported. Some OpenBVE features are supported.
 
-対応Blenderバージョン / Supported Blender version:4.3.0以降  
-動作確認Bveバージョン / Tested Bve versions:5.8, 6.0  
-strview5互換あり / strview5 tested  
-csvview5互換あり / csvview5 tested  
+Supported Blender version:4.3.0 or later  
+Tested Bve versions:5.8, 6.0  
+strview5 tested  
+csvview5 tested  
 
-# Supported x file features / 対応しているXファイルの機能 
-* Vertices / 頂点
-* Faces / 面
-* Normals (Not used when import) / 法線(インポート時には使用されません)
-* Material / マテリアル
-* Texture / テクスチャ
-* Text, binary and zipped-binary file format / テキスト、バイナリ形式、バイナリ圧縮形式
+# Supported x file features
+* Vertices
+* Faces
+* Normals (Not used when import)
+* Material
+* Texture
+* Text, binary and zipped-binary file format
 * Frame
 
-# Supported csv file features / 対応しているCSVファイルの機能
-* All / 全て
+# Supported csv file features
+* All
 
-# Supported Blender features / 対応しているBlenderの機能
-* Material / マテリアル
-  * Color without nodes / ノード未使用時の色
-  * Precinple BSDF nodes / プリンシプルBSDFノード
-  * Texture nodes / テクスチャノード
-  * Base color / ベースカラー
-  * Alpha / アルファ
-  * Emission / 放射
-  * Gamma / ガンマ
-* Flat shade and Smooth shade / フラットシェード、スムースシェード
-* Modifier ( Doesn't work completely ) / モディファイアー(100％動作はしません。)
+# Supported Blender features
+* Material
+  * Color without nodes
+  * Precinple BSDF nodes
+  * Texture nodes
+  * Base color
+  * Alpha
+  * Emission
+  * Gamma
+* Flat shade and Smooth shade
+* Modifier ( Doesn't work completely )
 
 # 使い方・注意点
 Wikiページを御覧ください。[Wiki](https://github.com/kusaanko/XFileSupport_BVE/wiki)
