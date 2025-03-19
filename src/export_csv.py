@@ -6,7 +6,7 @@ from .utility import float_to_str, vertex_to_str
 
 # CSVファイルに出力 / Export to CSV file
 class ExportCSVFile(bpy.types.Operator, ExportHelper):
-    bl_idname = "import_export_directx_for_bve.export_csv"
+    bl_idname = "export.csv_for_bve"
     bl_description = 'Export to BVE CSV file (.csv)'
     bl_label = "Export BVE CSV File"
     bl_space_type = 'PROPERTIES'

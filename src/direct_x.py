@@ -184,7 +184,7 @@ def write_float_list(f, f_list):
         
 
 class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
-    bl_idname = "import_export_directx_for_bve.import_directx_x"
+    bl_idname = "import.directx_x_for_bve"
     bl_description = 'Import from X file (.x)'
     bl_label = "Import DirectX X File"
     bl_space_type = 'PROPERTIES'
@@ -874,7 +874,7 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
 
 # Xファイルに出力 / Export to X file
 class ExportDirectXXFile(bpy.types.Operator, ExportHelper):
-    bl_idname = "import_export_directx_for_bve.export_directx_x"
+    bl_idname = "export.directx_x_for_bve"
     bl_description = 'Export to X file (.x)'
     bl_label = "Export DirectX X File"
     bl_space_type = 'PROPERTIES'
