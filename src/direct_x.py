@@ -69,13 +69,13 @@ class XModelMesh:
         self.material_count = 0
 
 class XModelNode:
-    node_name = ""
+    node_name: str | None
     transform_matrix: mathutils.Matrix = mathutils.Matrix.Identity(4)
     mesh: XModelMesh = XModelMesh()
     children: list[Self] = []
 
     def __init__(self):
-        self.node_name = ""
+        self.node_name: str | None = ""
         self.transform_matrix = mathutils.Matrix.Identity(4)
         self.mesh = XModelMesh()
         self.children = []
@@ -88,12 +88,12 @@ class XElement:
     name = ""
 
 class XMaterial:
-    face_color = ()
-    power = 0.0
-    specular_color = ()
-    emission_color = ()
-    texture_path = ""
-    name = ""
+    face_color: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
+    power: float = 0.0
+    specular_color: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    emission_color: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
+    texture_path: str | None = ""
+    name: str | None = ""
 
 def to_XElement(x_model_file_string, start_line_num):
     element_type = ""
@@ -117,8 +117,9 @@ def to_XElement(x_model_file_string, start_line_num):
                 if element_type.find(" ") != -1:
                     element_name = element_type[element_type.find(" ") + 1:]
                     element_type = element_type[0:element_type.find(" ")]
-                    if re.search("[^ ]*", element_name):
-                        element_name = re.search("[^ ]*", element_name).group(0)
+                    search_result = re.search("[^ ]*", element_name)
+                    if search_result:
+                        element_name = search_result.group(0)
                 if element_type == "":
                     element_type = "empty"
             else:
@@ -229,7 +230,7 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
         self.ret_integer_list = []
         self.ret_float_list = []
         self.ret_uuid = ""
-        self.byte_buffer = ByteBuffer(bytes())
+        self.byte_buffer = utility.ByteBuffer(bytes())
         self.text_content = ""
         self.text_pos = 0
         self.text_brace_count = 0
@@ -357,7 +358,7 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
                 if os.path.exists(path):
                     x_material.texture_path = path
 
-            if os.path.exists(x_material.texture_path):
+            if x_material.texture_path and os.path.exists(x_material.texture_path):
                 # 画像ノードを作成 / Create image node
                 texture = material.node_tree.nodes.new("ShaderNodeTexImage")
                 texture.location = (-300, 150)
@@ -479,19 +480,16 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
 
     def parse_material_text(self, mesh: XModelMesh):
         object_name = self.get_object_name_text()
-        color = [self.get_next_float_text(), self.get_next_float_text(), self.get_next_float_text(), self.get_next_float_text()]
+        color = (self.get_next_float_text(), self.get_next_float_text(), self.get_next_float_text(), self.get_next_float_text())
         power = self.get_next_float_text()
-        specular_color = [self.get_next_float_text(), self.get_next_float_text(), self.get_next_float_text()]
+        specular_color = (self.get_next_float_text(), self.get_next_float_text(), self.get_next_float_text())
         self.skip_next_token_text(";")
-        emissive_color = [self.get_next_float_text(), self.get_next_float_text(), self.get_next_float_text()]
-        face_color = [1.0, 1.0, 1.0, 1.0]
-        for i in range(len(color)):
-            face_color[i] = float(color[i])
+        emissive_color = (self.get_next_float_text(), self.get_next_float_text(), self.get_next_float_text())
         material = XMaterial()
-        material.face_color = face_color
+        material.face_color = color
         material.power = power
-        material.specular_color = tuple(specular_color)
-        material.emission_color = tuple(emissive_color) + (1.0,)
+        material.specular_color = specular_color
+        material.emission_color = emissive_color + (1.0,)
         material.name = object_name
 
         brace_count = self.text_brace_count
@@ -536,7 +534,7 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
         ret = ""
         while self.text_pos < len(self.text_content):
             # comment
-            if len(self.text_content) + 1 < self.text_pos and self.text_content[self.text_pos] == '/' and self.text_content[self.text_content + 1] == '/' or \
+            if len(self.text_content) + 1 < self.text_pos and self.text_content[self.text_pos] == '/' and self.text_content[len(self.text_content) + 1] == '/' or \
                     self.text_content[self.text_pos] == '#':
                 while self.text_pos < len(self.text_content):
                     if self.text_content[self.text_pos] == '\n' or self.text_content[self.text_pos] == '\r':
@@ -741,9 +739,9 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
         self.parse_token_loop(TOKEN_FLOAT_LIST)
         material = XMaterial()
         material.name = material_name
-        material.face_color = self.ret_float_list[0:4]
+        material.face_color = (self.ret_float_list[0], self.ret_float_list[1], self.ret_float_list[2], self.ret_float_list[3])
         material.power = self.ret_float_list[4]
-        material.specular_color = self.ret_float_list[5:8]
+        material.specular_color = (self.ret_float_list[5], self.ret_float_list[6], self.ret_float_list[7])
         material.emission_color = (self.ret_float_list[8], self.ret_float_list[9], self.ret_float_list[10], 1.0)
         token = self.parse_token()
         if token == TOKEN_NAME and self.ret_string == "TextureFilename":
@@ -841,7 +839,7 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
                             raise Exception(bpy.app.translations.pgettext("Unexpected compressed block size!"))
                         if magic != MSZIP_MAGIC:
                             raise Exception(bpy.app.translations.pgettext("Unexpected compressed block magic!"))
-                        compressed_data = compressed_byte_buffer.get(block_size - 2)
+                        compressed_data = compressed_byte_buffer.get_length(block_size - 2)
                         self.byte_buffer.append(zlib.decompress(compressed_data, -8, MSZIP_BLOCK))
             else:
                 with open(self.filepath, "rb") as f:
@@ -955,11 +953,12 @@ class ExportDirectXXFile(bpy.types.Operator, ExportHelper):
                 # テンプレート
                 if self.mode == "binary_zip":
                     f.write(b'xof 0302bzip0032')
-                    uncompressed_buffer = ByteBuffer(bytes())
+                    uncompressed_buffer = utility.ByteBuffer(bytes())
                     target = uncompressed_buffer
                 else:
                     f.write(b'xof 0302bin 0032')
                     target = f
+                    uncompressed_buffer = None
                 if not self.export_minimum:
                     # テンプレートデータを書き出す / Write template data
                     write_shorts(target, [TOKEN_TEMPLATE, TOKEN_NAME])
@@ -1163,7 +1162,7 @@ class ExportDirectXXFile(bpy.types.Operator, ExportHelper):
                         write_str(target, x_material.name)
                     write_shorts(target, [TOKEN_OBRACE])
                     color_list = [0.0] * 11
-                    color_list[0:4] = x_material.face_color[0:4]
+                    color_list[0:4] = x_material.face_color
                     color_list[4] = x_material.power
                     color_list[5:8] = x_material.specular_color[0:3]
                     color_list[8:11] = x_material.emission_color[0:3]
@@ -1177,13 +1176,13 @@ class ExportDirectXXFile(bpy.types.Operator, ExportHelper):
                     write_shorts(target, [TOKEN_CBRACE])
                 write_shorts(target, [TOKEN_CBRACE, TOKEN_CBRACE])
                 # flate圧縮 / Flate compression
-                if self.mode == "binary_zip":
+                if self.mode == "binary_zip" and uncompressed_buffer is not None:
                     f.write(struct.pack("<I", uncompressed_buffer.length() + 16))
                     uncompressed_buffer.pos = 0
                     MSZIP_BLOCK = 0x8000
                     while uncompressed_buffer.has_remaining():
                         length = min(uncompressed_buffer.remaining(), MSZIP_BLOCK)
-                        compressed_data = zlib.compress(uncompressed_buffer.get(length))[2:]
+                        compressed_data = zlib.compress(uncompressed_buffer.get_length(length))[2:]
                         f.write(struct.pack("<H", length))
                         f.write(struct.pack("<H", len(compressed_data) + 2))
                         f.write("CK".encode())

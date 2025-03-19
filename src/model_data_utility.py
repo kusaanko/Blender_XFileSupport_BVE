@@ -6,10 +6,10 @@ import os
 from .utility import vertex_to_str
 
 class Material:
-    face_color = ()
+    face_color: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
     power = 0.0
-    specular_color = ()
-    emission_color = ()
+    specular_color: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    emission_color: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
     texture_path = ""
     name = ""
 
@@ -60,7 +60,7 @@ class ModelDataUtility:
         normals_dict = {}
         self.vertex_use_normal = []
         self.faces = []
-        materials_dict: list[int] = {}
+        materials_dict: dict[str, int] = {}
         materials = []
         self.x_materials: list[Material] = []
         self.faces_use_material = []
@@ -162,11 +162,14 @@ class ModelDataUtility:
                             need_color = False
                             for out in link.from_node.outputs:
                                 if out.type == 'RGBA':
-                                    x_material.face_color = [out.default_value[0], out.default_value[1], out.default_value[2], principled.inputs['Alpha'].default_value]
+                                    x_material.face_color = (out.default_value[0], out.default_value[1], out.default_value[2], principled.inputs['Alpha'].default_value)
                                     if gamma_correction:
-                                        x_material.face_color[0] = math.pow(x_material.face_color[0], 1/2.2)
-                                        x_material.face_color[1] = math.pow(x_material.face_color[1], 1/2.2)
-                                        x_material.face_color[2] = math.pow(x_material.face_color[2], 1/2.2)
+                                        x_material.face_color = (
+                                            math.pow(x_material.face_color[0], 1/2.2),
+                                            math.pow(x_material.face_color[1], 1/2.2),
+                                            math.pow(x_material.face_color[2], 1/2.2),
+                                            x_material.face_color[3]
+                                        )
                         if link.from_node.type == "GAMMA":
                             for input in link.from_node.inputs:
                                 if input.identifier == 'Gamma':
@@ -179,11 +182,14 @@ class ModelDataUtility:
                         x_material.face_color = (1.0, 1.0, 1.0, 1.0)
                 else:
                     col = principled.inputs['Base Color'].default_value
-                    x_material.face_color = [col[0], col[1], col[2], principled.inputs['Alpha'].default_value]
+                    x_material.face_color = (col[0], col[1], col[2], principled.inputs['Alpha'].default_value)
                     if gamma_correction:
-                        x_material.face_color[0] = math.pow(x_material.face_color[0], 1/2.2)
-                        x_material.face_color[1] = math.pow(x_material.face_color[1], 1/2.2)
-                        x_material.face_color[2] = math.pow(x_material.face_color[2], 1/2.2)
+                        x_material.face_color = (
+                            math.pow(x_material.face_color[0], 1/2.2),
+                            math.pow(x_material.face_color[1], 1/2.2),
+                            math.pow(x_material.face_color[2], 1/2.2),
+                            x_material.face_color[3]
+                        )
                 # 鏡面反射
                 x_material.power = principled.inputs['Specular IOR Level'].default_value
                 x_material.specular_color = principled.inputs['Specular Tint'].default_value
@@ -201,7 +207,7 @@ class ModelDataUtility:
                 # 鏡面反射色
                 x_material.specular_color = material.specular_color
                 # 放射色
-                x_material.emission_color = (0.0, 0.0, 0.0)
+                x_material.emission_color = (0.0, 0.0, 0.0, 1.0)
             self.x_materials.append(x_material)
             
         # 生成した偽物のマテリアルを削除

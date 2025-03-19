@@ -36,7 +36,7 @@ class ByteBuffer:
         self.array = bytearray(data)
         self.pos = 0
 
-    def get(self):
+    def get_next(self):
         value = self.array[self.pos]
         self.pos += 1
         return value
@@ -57,11 +57,6 @@ class ByteBuffer:
 
     def get_double(self):
         return struct.unpack("<d", self.get_length(8))[0]
-
-    def get(self, length):
-        value = self.array[self.pos:self.pos + length]
-        self.pos += length
-        return value
 
     def has_remaining(self):
         return len(self.array) > self.pos
