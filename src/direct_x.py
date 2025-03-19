@@ -91,7 +91,7 @@ class XMaterial:
     face_color: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
     power: float = 0.0
     specular_color: tuple[float, float, float] = (0.0, 0.0, 0.0)
-    emission_color: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
+    emission_color: tuple[float, float, float] = (0.0, 0.0, 0.0)
     texture_path: str | None = ""
     name: str | None = ""
 
@@ -349,7 +349,7 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
             principled.inputs['Specular IOR Level'].default_value = x_material.power
             principled.inputs['Specular Tint'].default_value = (*x_material.specular_color, 1.0)
             # 放射を設定 / Set emission
-            principled.inputs['Emission Color'].default_value = x_material.emission_color
+            principled.inputs['Emission Color'].default_value = x_material.emission_color + (1.0,)
 
             # テクスチャの紐付け / Linking textures
             if x_material.texture_path and x_material.texture_path != "":
@@ -486,7 +486,7 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
         material.face_color = color
         material.power = power
         material.specular_color = specular_color
-        material.emission_color = emissive_color + (1.0,)
+        material.emission_color = emissive_color
         material.name = object_name
 
         brace_count = self.text_brace_count
@@ -739,7 +739,7 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
         material.face_color = (self.ret_float_list[0], self.ret_float_list[1], self.ret_float_list[2], self.ret_float_list[3])
         material.power = self.ret_float_list[4]
         material.specular_color = (self.ret_float_list[5], self.ret_float_list[6], self.ret_float_list[7])
-        material.emission_color = (self.ret_float_list[8], self.ret_float_list[9], self.ret_float_list[10], 1.0)
+        material.emission_color = (self.ret_float_list[8], self.ret_float_list[9], self.ret_float_list[10])
         token = self.parse_token()
         if token == TOKEN_NAME and self.ret_string == "TextureFilename":
             self.parse_token_loop(TOKEN_STRING)
