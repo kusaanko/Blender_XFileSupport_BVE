@@ -427,9 +427,6 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
             # オブジェクトをシーンに追加 / Add object to scene
             scene = bpy.context.scene
             scene.collection.objects.link(obj)
-            obj.select_set(True)
-            bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY')
-            obj.select_set(False)
 
     def parse_mesh_text(self, mesh: XModelMesh):
         object_name = self.get_object_name_text()
@@ -780,20 +777,11 @@ class ImportDirectXXFile(bpy.types.Operator, ImportHelper):
         node.children.append(child)
 
     def execute(self, context):
-        # オブジェクトモードに変更 / Change to object mode
-        if bpy.context.active_object != None:
-            bpy.ops.object.mode_set(mode = 'OBJECT')
-        for obj in bpy.context.scene.objects:
-            obj.select_set(False)
-
         # すべてのオブジェクトとマテリアルを削除 / Delete all objects and materials
         if self.remove_all:
             for obj in bpy.context.scene.objects:
                 if obj.type == 'MESH':
-                    obj.select_set(True)
-                else:
-                    obj.select_set(False)
-            bpy.ops.object.delete()
+                    bpy.data.objects.remove(obj)
             for material in bpy.data.materials:
                 material.user_clear()
                 bpy.data.materials.remove(material)
