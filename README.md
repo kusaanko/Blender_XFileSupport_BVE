@@ -1,6 +1,8 @@
 # XFileSupport_BVE
 Bve用に設計されたBlender用のXファイル入出力アドオン
 
+Blender Extensions (https://extensions.blender.org/add-ons/bve-import-export/) から入手できます
+
 CSV出力にも対応しています。また、OpenBVE専用のCSV機能にも対応します。
 
 対応Blenderバージョン:4.3.0以降  
@@ -72,11 +74,17 @@ Wikiページを御覧ください。[Wiki](https://github.com/kusaanko/XFileSup
 <img src="for_readme/preference.jpg" width="500px"></img>  
 編集>プリファレンスをクリックして設定画面を出します  
 <img src="for_readme/install.jpg" width="500px"></img>  
-アドオン->インストールをクリックします  
-<img src="for_readme/install_addon.jpg" width="500px"></img>  
-ダウンロードしたXFileSupport.pyを選択してアドオンをインストールをクリックします。
-<img src="for_readme/check.jpg" width="500px;"></img>  
-「DirectX」と検索してこのプラグインが有効になっていることを確認してください。
+エクステンションを入手へ移動します。
+
+検索欄に「BVE」と入力し、BVE Import/Exportをインストールしてください。
+
+## アドオン版を利用の方
+新たにBlenderエクステンション版としてリリースしたため、アドオン版を利用していた方（ver 5.0.0より前のバージョン）は削除する必要があります。
+
+<img src="for_readme/Uninstall_addon.jpg" width="500px"></img>  
+プリファレンス→アドオンから「DirectX」と検索すると以前のバージョンのアドオンが出てきます。
+
+右側にあるアイコンをクリックして展開し、アンインストールボタンをクリックしてください。
 
 # ビルド / Build
 
