@@ -1180,7 +1180,7 @@ class ExportDirectXXFile(bpy.types.Operator, ExportHelper):
 
             if not self.export_minimum:
                 # テンプレートデータを書き出す / Write template data
-                x_file_content = '''
+                x_file_content += '''
 template Vector {
  <3d82ab5e-62da-11cf-ab39-0020af71e433>
  FLOAT x;
